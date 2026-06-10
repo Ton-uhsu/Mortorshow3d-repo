@@ -1,0 +1,29 @@
+{
+  "name": "mortorshow3d-floorplan-editor",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "papaparse": "^5.5.3",
+    "pdfjs-dist": "^6.0.227",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "three": "^0.181.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/papaparse": "^5.5.2",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react-swc": "^4.3.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.16"
+  }
+}
