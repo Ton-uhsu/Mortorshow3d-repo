@@ -2,6 +2,7 @@ import { Suspense, useMemo } from "react";
 import { Canvas, useLoader } from "@react-three/fiber";
 import { Edges, Grid, Line, OrbitControls } from "@react-three/drei";
 import { DoubleSide, MathUtils, SRGBColorSpace, TextureLoader } from "three";
+import { ui } from "../lib/ui";
 import type {
   BoothObject,
   DoorObject,
@@ -231,19 +232,19 @@ export function ThreePreview({
   const shadowPlaneSize = Math.max(plane.width, plane.depth) + 6;
 
   return (
-    <section className="preview-card">
-      <header className="panel-header">
+    <section className={`${ui.panel} flex min-h-[420px] flex-col lg:min-h-[calc(100vh-8.5rem)]`}>
+      <header className={ui.panelHeader}>
         <div>
-          <p className="eyebrow">3D Preview</p>
-          <h2>Extruded scene</h2>
+          <p className={ui.eyebrow}>3D Preview</p>
+          <h2 className={ui.panelTitle}>Extruded scene</h2>
         </div>
-        <div className="stats-pill">
-          <strong>{stats.total}</strong>
-          <span>objects</span>
+        <div className="min-w-[92px] rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-center">
+          <strong className="block text-xl font-semibold text-white">{stats.total}</strong>
+          <span className="text-sm text-slate-300">objects</span>
         </div>
       </header>
 
-      <div className="preview-stage">
+      <div className="mt-3 min-h-[420px] flex-1 overflow-hidden rounded-[24px] border border-white/10">
         <Canvas camera={{ fov: 42, position: [9, 9, 8] }} shadows>
           <color args={["#101721"]} attach="background" />
           <ambientLight intensity={0.65} />
@@ -297,14 +298,14 @@ export function ThreePreview({
         </Canvas>
       </div>
 
-      <footer className="preview-footer">
+      <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-300">
         <div>
-          <span>Average height</span>
-          <strong>{stats.averageHeight.toFixed(1)}m</strong>
+          <span className={ui.statsLabel}>Average height</span>
+          <strong className={ui.statsValue}>{stats.averageHeight.toFixed(1)}m</strong>
         </div>
         <div>
-          <span>Camera</span>
-          <strong>Orbit enabled</strong>
+          <span className={ui.statsLabel}>Camera</span>
+          <strong className={ui.statsValue}>Orbit enabled</strong>
         </div>
       </footer>
     </section>
