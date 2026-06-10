@@ -107,6 +107,7 @@ function CameraControls({
       enablePan
       enableRotate
       enableZoom
+      makeDefault
       maxPolarAngle={isoLocked ? ISO_POLAR_ANGLE : Math.PI / 2.15}
       minPolarAngle={isoLocked ? ISO_POLAR_ANGLE : 0.1}
       ref={controlsRef}
@@ -360,6 +361,7 @@ function PreviewSceneCanvas({
   gridSize,
   isoLocked,
   isoViewVersion,
+  performanceMode = false,
   plane,
   routePath,
   selectedId,
@@ -369,19 +371,28 @@ function PreviewSceneCanvas({
   gridSize: number;
   isoLocked: boolean;
   isoViewVersion: number;
+  performanceMode?: boolean;
   plane: { depth: number; width: number };
   shadowPlaneSize: number;
 }) {
   return (
-    <Canvas camera={{ fov: 42, position: [9, 9, 8] }} shadows>
+    <Canvas
+      camera={{ fov: 42, position: [9, 9, 8] }}
+      dpr={performanceMode ? [1, 1.35] : [1, 1.75]}
+      gl={{
+        antialias: !performanceMode,
+        powerPreference: "high-performance",
+      }}
+      shadows={!performanceMode}
+    >
       <color args={["#101721"]} attach="background" />
       <ambientLight intensity={0.65} />
       <directionalLight
-        castShadow
+        castShadow={!performanceMode}
         intensity={1.15}
         position={[6, 12, 5]}
-        shadow-mapSize-height={2048}
-        shadow-mapSize-width={2048}
+        shadow-mapSize-height={performanceMode ? 512 : 2048}
+        shadow-mapSize-width={performanceMode ? 512 : 2048}
       />
       <Suspense fallback={null}>
         <FloorTexture
@@ -391,10 +402,12 @@ function PreviewSceneCanvas({
           planeWidth={plane.width}
         />
       </Suspense>
-      <mesh receiveShadow position={[0, -0.02, 0]} rotation-x={-Math.PI / 2}>
-        <planeGeometry args={[shadowPlaneSize, shadowPlaneSize]} />
-        <shadowMaterial opacity={0.25} />
-      </mesh>
+      {!performanceMode ? (
+        <mesh receiveShadow position={[0, -0.02, 0]} rotation-x={-Math.PI / 2}>
+          <planeGeometry args={[shadowPlaneSize, shadowPlaneSize]} />
+          <shadowMaterial opacity={0.25} />
+        </mesh>
+      ) : null}
       <WalkwayMeshes
         planeDepth={plane.depth}
         planeWidth={plane.width}
@@ -417,17 +430,19 @@ function PreviewSceneCanvas({
         planeDepth={plane.depth}
         planeWidth={plane.width}
       />
-      <Grid
-        args={[gridSize, gridSize]}
-        cellColor="#25364a"
-        cellSize={0.5}
-        fadeDistance={22}
-        fadeStrength={1}
-        infiniteGrid
-        position={[0, 0.01, 0]}
-        sectionColor="#35516d"
-        sectionSize={2}
-      />
+      {!performanceMode ? (
+        <Grid
+          args={[gridSize, gridSize]}
+          cellColor="#25364a"
+          cellSize={0.5}
+          fadeDistance={22}
+          fadeStrength={1}
+          infiniteGrid
+          position={[0, 0.01, 0]}
+          sectionColor="#35516d"
+          sectionSize={2}
+        />
+      ) : null}
       <CameraControls isoLocked={isoLocked} isoViewVersion={isoViewVersion} />
     </Canvas>
   );
@@ -477,6 +492,13 @@ export function ThreePreview({
       return;
     }
 
+    const originalOverflow = document.body.style.overflow;
+    const originalPosition = document.body.style.position;
+    const originalWidth = document.body.style.width;
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.width = "100%";
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setLargePreviewOpen(false);
@@ -484,7 +506,12 @@ export function ThreePreview({
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.position = originalPosition;
+      document.body.style.width = originalWidth;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, [largePreviewOpen]);
 
   return (
@@ -529,7 +556,7 @@ export function ThreePreview({
       </header>
 
       <div className="mt-3 min-h-[420px] flex-1 overflow-hidden rounded-[24px] border border-white/10">
-        <PreviewSceneCanvas {...sceneProps} />
+        {largePreviewOpen ? null : <PreviewSceneCanvas {...sceneProps} />}
       </div>
 
       <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-300">
@@ -546,9 +573,12 @@ export function ThreePreview({
       </footer>
     </section>
     {largePreviewOpen ? (
-      <div className="fixed inset-0 z-50 bg-slate-950/88 p-2 backdrop-blur-md sm:p-4">
-        <section className="flex h-[100dvh] flex-col overflow-hidden rounded-[24px] border border-white/12 bg-slate-950 shadow-[0_32px_120px_rgba(0,0,0,0.6)] sm:h-[calc(100dvh-2rem)]">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-3 py-3 sm:px-5">
+      <div
+        className="fixed inset-0 z-50 overscroll-none bg-slate-950/92 p-0 backdrop-blur-md sm:p-4"
+        onTouchMove={(event) => event.preventDefault()}
+      >
+        <section className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden rounded-none border-white/12 bg-slate-950 shadow-[0_32px_120px_rgba(0,0,0,0.6)] sm:h-[calc(100dvh-2rem)] sm:rounded-[24px] sm:border">
+          <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 px-3 py-3 sm:px-5">
             <div>
               <p className={ui.eyebrow}>Large 3D Preview</p>
               <h2 className="text-lg font-semibold text-white sm:text-2xl">Extruded scene</h2>
@@ -581,8 +611,11 @@ export function ThreePreview({
               </button>
             </div>
           </header>
-          <div className="min-h-0 flex-1 touch-none">
-            <PreviewSceneCanvas {...sceneProps} />
+          <div
+            className="min-h-0 flex-1 touch-none overflow-hidden"
+            onTouchMove={(event) => event.stopPropagation()}
+          >
+            <PreviewSceneCanvas {...sceneProps} performanceMode />
           </div>
         </section>
       </div>
