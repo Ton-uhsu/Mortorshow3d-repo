@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useLoader, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { Edges, Grid, Html, Line, OrbitControls } from "@react-three/drei";
 import { DoubleSide, MathUtils, SRGBColorSpace, TextureLoader } from "three";
 import type { Camera } from "three";
@@ -22,6 +22,14 @@ interface ThreePreviewProps {
   routePath: RoutePath | null;
   selectedId: string | null;
   walkways: WalkwayObject[];
+}
+
+interface PreviewMetrics {
+  canvasHeight: number;
+  canvasWidth: number;
+  dpr: number;
+  fps: number;
+  scrollY: number;
 }
 
 const MAX_PLANE_DIMENSION = 14;
@@ -113,6 +121,38 @@ function CameraControls({
       ref={controlsRef}
     />
   );
+}
+
+function PerformanceProbe({
+  onMetrics,
+}: {
+  onMetrics: (metrics: PreviewMetrics) => void;
+}) {
+  const { gl } = useThree();
+  const frameCountRef = useRef(0);
+  const lastReportRef = useRef(performance.now());
+
+  useFrame(() => {
+    frameCountRef.current += 1;
+    const now = performance.now();
+    const elapsed = now - lastReportRef.current;
+
+    if (elapsed < 700) {
+      return;
+    }
+
+    onMetrics({
+      canvasHeight: Math.round(gl.domElement.clientHeight),
+      canvasWidth: Math.round(gl.domElement.clientWidth),
+      dpr: Number(gl.getPixelRatio().toFixed(2)),
+      fps: Math.round((frameCountRef.current * 1000) / elapsed),
+      scrollY: Math.round(window.scrollY),
+    });
+    frameCountRef.current = 0;
+    lastReportRef.current = now;
+  });
+
+  return null;
 }
 
 function FloorTexture({
@@ -361,6 +401,7 @@ function PreviewSceneCanvas({
   gridSize,
   isoLocked,
   isoViewVersion,
+  onMetrics,
   performanceMode = false,
   plane,
   routePath,
@@ -371,6 +412,7 @@ function PreviewSceneCanvas({
   gridSize: number;
   isoLocked: boolean;
   isoViewVersion: number;
+  onMetrics?: (metrics: PreviewMetrics) => void;
   performanceMode?: boolean;
   plane: { depth: number; width: number };
   shadowPlaneSize: number;
@@ -443,6 +485,7 @@ function PreviewSceneCanvas({
           sectionSize={2}
         />
       ) : null}
+      {onMetrics ? <PerformanceProbe onMetrics={onMetrics} /> : null}
       <CameraControls isoLocked={isoLocked} isoViewVersion={isoViewVersion} />
     </Canvas>
   );
@@ -461,6 +504,13 @@ export function ThreePreview({
   const [isoLocked, setIsoLocked] = useState(false);
   const [isoViewVersion, setIsoViewVersion] = useState(0);
   const [largePreviewOpen, setLargePreviewOpen] = useState(false);
+  const [metrics, setMetrics] = useState<PreviewMetrics | null>(null);
+  const showDebugMetrics = useMemo(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("debug") === "1",
+    [],
+  );
   const stats = useMemo(() => {
     const totalHeight = booths.reduce((sum, booth) => sum + booth.extrudeHeight, 0);
     return {
@@ -494,10 +544,19 @@ export function ThreePreview({
 
     const originalOverflow = document.body.style.overflow;
     const originalPosition = document.body.style.position;
+    const originalTop = document.body.style.top;
     const originalWidth = document.body.style.width;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+    const scrollY = window.scrollY;
     document.body.style.overflow = "hidden";
     document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
     document.body.style.width = "100%";
+    document.documentElement.style.overflow = "hidden";
+
+    const preventTouchScroll = (event: TouchEvent) => {
+      event.preventDefault();
+    };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -506,11 +565,16 @@ export function ThreePreview({
     };
 
     window.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("touchmove", preventTouchScroll, { passive: false });
     return () => {
       document.body.style.overflow = originalOverflow;
       document.body.style.position = originalPosition;
+      document.body.style.top = originalTop;
       document.body.style.width = originalWidth;
+      document.documentElement.style.overflow = originalHtmlOverflow;
       window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("touchmove", preventTouchScroll);
+      window.scrollTo(0, scrollY);
     };
   }, [largePreviewOpen]);
 
@@ -573,10 +637,7 @@ export function ThreePreview({
       </footer>
     </section>
     {largePreviewOpen ? (
-      <div
-        className="fixed inset-0 z-50 overscroll-none bg-slate-950/92 p-0 backdrop-blur-md sm:p-4"
-        onTouchMove={(event) => event.preventDefault()}
-      >
+      <div className="fixed inset-0 z-50 overscroll-none bg-slate-950/92 p-0 backdrop-blur-md sm:p-4">
         <section className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden rounded-none border-white/12 bg-slate-950 shadow-[0_32px_120px_rgba(0,0,0,0.6)] sm:h-[calc(100dvh-2rem)] sm:rounded-[24px] sm:border">
           <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 px-3 py-3 sm:px-5">
             <div>
@@ -611,11 +672,23 @@ export function ThreePreview({
               </button>
             </div>
           </header>
-          <div
-            className="min-h-0 flex-1 touch-none overflow-hidden"
-            onTouchMove={(event) => event.stopPropagation()}
-          >
-            <PreviewSceneCanvas {...sceneProps} performanceMode />
+          <div className="relative min-h-0 flex-1 touch-none overflow-hidden">
+            <PreviewSceneCanvas
+              {...sceneProps}
+              onMetrics={showDebugMetrics ? setMetrics : undefined}
+              performanceMode
+            />
+            {showDebugMetrics && metrics ? (
+              <div className="pointer-events-none absolute left-3 bottom-3 rounded-2xl border border-white/12 bg-slate-950/82 px-3 py-2 font-mono text-[0.68rem] leading-5 text-cyan-100 shadow-2xl">
+                <div>fps: {metrics.fps}</div>
+                <div>dpr: {metrics.dpr}</div>
+                <div>
+                  canvas: {metrics.canvasWidth}x{metrics.canvasHeight}
+                </div>
+                <div>scrollY: {metrics.scrollY}</div>
+                <div>mode: mobile perf</div>
+              </div>
+            ) : null}
           </div>
         </section>
       </div>
