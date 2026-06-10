@@ -214,25 +214,22 @@ function TopBoothLabel({
   const logoUrl = booth.logoUrl?.trim();
   const showLogo = Boolean(logoUrl && !logoFailed);
   const shortestSide = Math.min(width, depth);
-  const isTiny = shortestSide < 0.44;
-  const labelWidth = Math.max(width * 78, isTiny ? 54 : 82);
-  const labelHeight = Math.max(depth * 78, isTiny ? 30 : 48);
-  const fontSize = Math.max(10, Math.min(20, shortestSide * 15));
+  const labelWidth = Math.max(width * 104, 28);
+  const labelHeight = Math.max(depth * 104, 22);
+  const fontSize = Math.max(11, Math.min(24, shortestSide * 18));
 
   return (
     <div
       style={{
         alignItems: "center",
-        background: "rgba(255, 255, 255, 0.94)",
-        border: "1px solid rgba(255, 255, 255, 0.9)",
-        borderRadius: 8,
-        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.22)",
+        background: showLogo ? "rgba(255, 255, 255, 0.82)" : "rgba(255, 255, 255, 0.9)",
+        borderRadius: 3,
         color: "#111827",
         display: "grid",
         justifyItems: "center",
-        minHeight: labelHeight,
+        height: labelHeight,
         overflow: "hidden",
-        padding: isTiny ? "3px 6px" : "6px 8px",
+        padding: showLogo ? "4px" : "5px",
         pointerEvents: "none",
         width: labelWidth,
       }}
@@ -245,9 +242,11 @@ function TopBoothLabel({
           src={logoUrl}
           style={{
             display: "block",
-            maxHeight: Math.max(labelHeight - 10, 18),
-            maxWidth: Math.max(labelWidth - 12, 40),
+            height: "100%",
+            maxHeight: "100%",
+            maxWidth: "100%",
             objectFit: "contain",
+            width: "100%",
           }}
         />
       ) : (
@@ -256,12 +255,12 @@ function TopBoothLabel({
             fontSize,
             fontWeight: 900,
             lineHeight: 1,
-            maxWidth: labelWidth - 10,
+            maxWidth: labelWidth - 8,
             textAlign: "center",
             textTransform: "uppercase",
           }}
         >
-          {isTiny ? code : brand}
+          {shortestSide < 0.44 ? code : brand}
         </div>
       )}
     </div>
