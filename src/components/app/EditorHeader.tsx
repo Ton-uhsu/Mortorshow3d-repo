@@ -3,6 +3,7 @@ import { ui } from "../../lib/ui";
 
 interface EditorHeaderProps {
   floorName: string;
+  isAZoneDemoLoading: boolean;
   onExport: () => void;
   onLoadAZonePdfDemo: () => void;
   onHandleUpload: (file: File) => void;
@@ -12,6 +13,7 @@ interface EditorHeaderProps {
 
 export function EditorHeader({
   floorName,
+  isAZoneDemoLoading,
   onExport,
   onHandleUpload,
   onLoadAZonePdfDemo,
@@ -49,10 +51,11 @@ export function EditorHeader({
         </button>
         <button
           className={`${ui.buttonGhost} w-full sm:w-auto`}
+          disabled={isAZoneDemoLoading}
           onClick={onLoadAZonePdfDemo}
           type="button"
         >
-          A zone demo
+          {isAZoneDemoLoading ? "Loading A zone..." : "A zone demo"}
         </button>
         <button className={`${ui.buttonGhost} w-full sm:w-auto`} onClick={onExport} type="button">
           Export JSON

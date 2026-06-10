@@ -2,7 +2,13 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_CSV_ASSET } from "../constants/editor";
 import { defaultFloorPlanImage, defaultFloorPlanSize } from "../data/defaultFloorPlan";
 import { loadBoothCatalog } from "../lib/boothCatalog";
-import { A_ZONE_PDF_PATH, buildAZonePdfDemo, buildRouteDemo } from "../lib/demoProject";
+import {
+  A_ZONE_FLOOR_PLAN_IMAGE_PATH,
+  A_ZONE_FLOOR_PLAN_SIZE,
+  A_ZONE_PDF_PATH,
+  buildAZonePdfDemo,
+  buildRouteDemo,
+} from "../lib/demoProject";
 import { fileToDataUrl, readImageSize } from "../lib/floorPlanFiles";
 import { renderPdfFloorPlan } from "../lib/floorPlanPdf";
 import {
@@ -45,6 +51,7 @@ export function useFloorPlanProject() {
   const [floorPlanOpacity, setFloorPlanOpacity] = useState(1);
   const [gridVisible, setGridVisible] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
+  const [isAZoneDemoLoading, setIsAZoneDemoLoading] = useState(false);
   const [currentPdfSource, setCurrentPdfSource] = useState<string | Uint8Array | null>(null);
   const [copiedBooth, setCopiedBooth] = useState<BoothObject | null>(null);
   const [fromDoorId, setFromDoorId] = useState<string | null>(null);
@@ -219,16 +226,20 @@ export function useFloorPlanProject() {
   };
 
   const loadAZonePdfDemo = async () => {
+    if (isAZoneDemoLoading) {
+      return;
+    }
+
     try {
+      setIsAZoneDemoLoading(true);
       setFloorPlanStatus("Loading A zone PDF demo...");
       const availableCatalogEntries =
         catalogEntries.length > 0
           ? catalogEntries
           : await loadBoothCatalog(DEFAULT_CSV_ASSET);
-      const rendered = await renderPdfFloorPlan(A_ZONE_PDF_PATH);
       const demo = buildAZonePdfDemo(
-        rendered.image,
-        rendered.size,
+        A_ZONE_FLOOR_PLAN_IMAGE_PATH,
+        A_ZONE_FLOOR_PLAN_SIZE,
         availableCatalogEntries,
       );
 
@@ -254,6 +265,8 @@ export function useFloorPlanProject() {
       const message =
         error instanceof Error ? error.message : "Unable to load A zone PDF demo";
       setFloorPlanStatus(message);
+    } finally {
+      setIsAZoneDemoLoading(false);
     }
   };
 
@@ -456,6 +469,7 @@ export function useFloorPlanProject() {
     fromDoorId,
     gridVisible,
     handleUpload,
+    isAZoneDemoLoading,
     loadAZonePdfDemo,
     loadRouteDemo,
     resetProject,

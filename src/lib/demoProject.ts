@@ -101,6 +101,12 @@ function createWalkway(
 
 export const A_ZONE_PDF_PATH =
   `${import.meta.env.BASE_URL}Doc/THAI-Construction-Manual-10022026-pages-2-rotated-pages.pdf`;
+export const A_ZONE_FLOOR_PLAN_IMAGE_PATH =
+  `${import.meta.env.BASE_URL}Doc/a-zone-demo-floor-plan.png`;
+export const A_ZONE_FLOOR_PLAN_SIZE: FloorPlanSize = {
+  height: PDF_PREVIEW_HEIGHT,
+  width: PDF_PREVIEW_WIDTH,
+};
 
 export function buildAZonePdfDemo(
   floorPlanImage: string,

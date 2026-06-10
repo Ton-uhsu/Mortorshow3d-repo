@@ -21,6 +21,7 @@ export default function App() {
     <div className="min-h-screen p-3 md:p-4">
       <EditorHeader
         floorName={project.floorName}
+        isAZoneDemoLoading={project.isAZoneDemoLoading}
         onExport={project.exportProject}
         onHandleUpload={(file) => {
           void project.handleUpload(file);
