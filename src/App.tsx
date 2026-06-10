@@ -25,6 +25,9 @@ export default function App() {
         onHandleUpload={(file) => {
           void project.handleUpload(file);
         }}
+        onLoadAZonePdfDemo={() => {
+          void project.loadAZonePdfDemo();
+        }}
         onLoadRouteDemo={project.loadRouteDemo}
         uploadRef={uploadRef}
       />

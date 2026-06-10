@@ -4,6 +4,7 @@ import { ui } from "../../lib/ui";
 interface EditorHeaderProps {
   floorName: string;
   onExport: () => void;
+  onLoadAZonePdfDemo: () => void;
   onHandleUpload: (file: File) => void;
   onLoadRouteDemo: () => void;
   uploadRef: RefObject<HTMLInputElement | null>;
@@ -13,6 +14,7 @@ export function EditorHeader({
   floorName,
   onExport,
   onHandleUpload,
+  onLoadAZonePdfDemo,
   onLoadRouteDemo,
   uploadRef,
 }: EditorHeaderProps) {
@@ -44,6 +46,13 @@ export function EditorHeader({
         </button>
         <button className={`${ui.buttonGhost} w-full sm:w-auto`} onClick={onLoadRouteDemo} type="button">
           Route demo
+        </button>
+        <button
+          className={`${ui.buttonGhost} w-full sm:w-auto`}
+          onClick={onLoadAZonePdfDemo}
+          type="button"
+        >
+          A zone demo
         </button>
         <button className={`${ui.buttonGhost} w-full sm:w-auto`} onClick={onExport} type="button">
           Export JSON

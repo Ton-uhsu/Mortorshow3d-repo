@@ -39,6 +39,21 @@ const DOOR_CUTOUT_MIN_HEIGHT = 0.13;
 const DOOR_CUTOUT_OFFSET = 0.012;
 const DOOR_CUTOUT_WIDTH = 0.46;
 
+interface BoothLabelTier {
+  bodyHeight: number;
+  bodyPadding: string;
+  codeFontSize: number;
+  codeHeight: number;
+  distanceFactor: number;
+  height: number;
+  logoHeight: number;
+  logoWidth: number;
+  name: string;
+  shadow: string;
+  width: number;
+  yOffset: number;
+}
+
 function isDoorHorizontal(door: DoorObject) {
   return door.edge === "top" || door.edge === "bottom";
 }
@@ -196,6 +211,216 @@ function FloorBacking({
       <planeGeometry args={[planeWidth, planeDepth]} />
       <meshBasicMaterial color="#d9d4c8" side={DoubleSide} toneMapped={false} />
     </mesh>
+  );
+}
+
+function getBoothLabelTier(boothWidth: number, boothDepth: number): BoothLabelTier {
+  const area = boothWidth * boothDepth;
+  const shortestSide = Math.min(boothWidth, boothDepth);
+
+  if (area < 0.45 || shortestSide < 0.45) {
+    return {
+      bodyHeight: 0,
+      bodyPadding: "0",
+      codeFontSize: 9,
+      codeHeight: 18,
+      distanceFactor: 9,
+      height: 18,
+      logoHeight: 0,
+      logoWidth: 0,
+      name: "pin",
+      shadow: "0 10px 20px rgba(15, 23, 42, 0.22)",
+      width: 70,
+      yOffset: 0.18,
+    };
+  }
+
+  if (area < 1.15) {
+    return {
+      bodyHeight: 38,
+      bodyPadding: "5px 7px 7px",
+      codeFontSize: 9,
+      codeHeight: 14,
+      distanceFactor: 8,
+      height: 52,
+      logoHeight: 28,
+      logoWidth: 82,
+      name: "compact",
+      shadow: "0 14px 26px rgba(15, 23, 42, 0.22)",
+      width: 104,
+      yOffset: 0.24,
+    };
+  }
+
+  if (area > 3.2 && shortestSide > 1.05) {
+    return {
+      bodyHeight: 74,
+      bodyPadding: "9px 12px 12px",
+      codeFontSize: 11,
+      codeHeight: 18,
+      distanceFactor: 7,
+      height: 92,
+      logoHeight: 52,
+      logoWidth: 126,
+      name: "hero",
+      shadow: "0 20px 42px rgba(15, 23, 42, 0.28)",
+      width: 150,
+      yOffset: 0.34,
+    };
+  }
+
+  return {
+    bodyHeight: 58,
+    bodyPadding: "7px 10px 10px",
+    codeFontSize: 10,
+    codeHeight: 16,
+    distanceFactor: 7.5,
+    height: 74,
+    logoHeight: 42,
+    logoWidth: 110,
+    name: "standard",
+    shadow: "0 18px 34px rgba(15, 23, 42, 0.25)",
+    width: 130,
+    yOffset: 0.3,
+  };
+}
+
+function BoothLabelCard({
+  booth,
+  tier,
+}: {
+  booth: BoothObject;
+  tier: BoothLabelTier;
+}) {
+  const [logoFailed, setLogoFailed] = useState(false);
+  const code = booth.boothCode || booth.name || "Booth";
+  const brand = booth.name || booth.boothCode || "Booth";
+  const logoUrl = booth.logoUrl?.trim();
+  const showLogo = Boolean(logoUrl && !logoFailed && tier.bodyHeight > 0);
+  const compactWordmark = brand.length > 14;
+
+  return (
+    <div
+      data-label-tier={tier.name}
+      style={{
+        background: "#ffffff",
+        border: "1px solid rgba(8, 47, 73, 0.22)",
+        borderRadius: 5,
+        boxShadow: tier.shadow,
+        color: "#0f172a",
+        display: "grid",
+        gridTemplateRows:
+          tier.bodyHeight > 0
+            ? `${tier.codeHeight}px minmax(${tier.bodyHeight}px, auto)`
+            : `${tier.codeHeight}px`,
+        minHeight: tier.height,
+        overflow: "hidden",
+        pointerEvents: "none",
+        width: tier.width,
+      }}
+    >
+      <div
+        style={{
+          alignItems: "center",
+          background: "linear-gradient(90deg, #55c7c7, #3aa8b3)",
+          color: "#ffffff",
+          display: "flex",
+          fontSize: tier.codeFontSize,
+          fontWeight: 900,
+          justifyContent: "center",
+          letterSpacing: "0.02em",
+          lineHeight: 1,
+          overflow: "hidden",
+          padding: "0 5px",
+          textOverflow: "ellipsis",
+          textShadow: "0 1px 0 rgba(8, 47, 73, 0.18)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {code}
+      </div>
+      {tier.bodyHeight > 0 ? (
+        <div
+          style={{
+            alignItems: "center",
+            background: "#ffffff",
+            display: "grid",
+            justifyItems: "center",
+            padding: tier.bodyPadding,
+          }}
+        >
+          {showLogo ? (
+            <img
+              alt={`${brand} logo`}
+              draggable="false"
+              onError={() => setLogoFailed(true)}
+              src={logoUrl}
+              style={{
+                display: "block",
+                maxHeight: tier.logoHeight,
+                maxWidth: tier.logoWidth,
+                objectFit: "contain",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                color: "#111827",
+                fontSize: compactWordmark
+                  ? Math.max(tier.codeFontSize, 8)
+                  : Math.max(tier.codeFontSize + 2, 10),
+                fontWeight: 900,
+                lineHeight: 1.05,
+                maxWidth: tier.width - 14,
+                textAlign: "center",
+                textTransform: "uppercase",
+              }}
+            >
+              {brand}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BoothLabels({
+  booths,
+  planeDepth,
+  planeWidth,
+}: {
+  booths: BoothObject[];
+  planeDepth: number;
+  planeWidth: number;
+}) {
+  return (
+    <>
+      {booths.map((booth) => {
+        const width = booth.width * planeWidth;
+        const depth = booth.depth * planeDepth;
+        const x = (booth.x + booth.width / 2 - 0.5) * planeWidth;
+        const z = (booth.y + booth.depth / 2 - 0.5) * planeDepth;
+        const tier = getBoothLabelTier(width, depth);
+
+        return (
+          <Html
+            center
+            distanceFactor={tier.distanceFactor}
+            key={`${booth.id}-label`}
+            position={[x, booth.extrudeHeight + tier.yOffset, z]}
+            style={{
+              filter: "drop-shadow(0 10px 18px rgba(15, 23, 42, 0.2))",
+              pointerEvents: "none",
+              userSelect: "none",
+            }}
+            zIndexRange={[40, 0]}
+          >
+            <BoothLabelCard booth={booth} tier={tier} />
+          </Html>
+        );
+      })}
+    </>
   );
 }
 
@@ -479,6 +704,7 @@ function PreviewSceneCanvas({
         planeWidth={plane.width}
         selectedId={selectedId}
       />
+      <BoothLabels booths={booths} planeDepth={plane.depth} planeWidth={plane.width} />
       <RouteLine
         planeDepth={plane.depth}
         planeWidth={plane.width}

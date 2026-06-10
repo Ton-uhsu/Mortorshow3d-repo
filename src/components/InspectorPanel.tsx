@@ -72,6 +72,17 @@ export function InspectorPanel({
             </label>
 
             <label className={ui.field}>
+              <span className={ui.fieldHint}>Logo URL</span>
+              <input
+                className={ui.input}
+                onChange={(event) => onUpdate({ logoUrl: event.target.value || null })}
+                placeholder="https://..."
+                type="url"
+                value={booth.logoUrl ?? ""}
+              />
+            </label>
+
+            <label className={ui.field}>
               <span className={ui.fieldHint}>Category</span>
               <select
                 className={ui.input}

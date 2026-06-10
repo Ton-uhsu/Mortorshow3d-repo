@@ -3,8 +3,8 @@ import type { BoothObject, DoorObject, RoutePath, RoutePoint, WalkwayObject } fr
 const GRID_COLUMNS = 96;
 const GRID_ROWS = 54;
 const DOOR_SEARCH_RADIUS = 10;
-const OBSTACLE_PADDING_X = 1 / GRID_COLUMNS;
-const OBSTACLE_PADDING_Y = 1 / GRID_ROWS;
+const OBSTACLE_PADDING_X = 0.25 / GRID_COLUMNS;
+const OBSTACLE_PADDING_Y = 0.25 / GRID_ROWS;
 const WALKWAY_GRID_TOLERANCE = Math.max(1 / GRID_COLUMNS, 1 / GRID_ROWS) * 0.55;
 
 interface GridNode {

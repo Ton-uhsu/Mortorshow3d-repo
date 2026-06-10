@@ -11,6 +11,7 @@ export interface BoothObject {
   id: string;
   name: string;
   boothCode?: string;
+  logoUrl?: string | null;
   category: BoothCategory;
   color: string;
   x: number;

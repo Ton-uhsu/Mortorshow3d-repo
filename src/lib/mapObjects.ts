@@ -158,17 +158,20 @@ export function applyCatalogEntryToBooth(
     return {
       ...booth,
       boothCode: undefined,
+      logoUrl: undefined,
     };
   }
 
   const shouldReplaceName =
     !booth.name.trim() || /^booth\d+$/i.test(booth.name) || booth.name === booth.boothCode;
   const category = getCatalogCategory(entry);
+  const brandName = entry.brandEnglish || entry.brandThai || entry.code;
 
   return {
     ...booth,
     boothCode: entry.code,
-    name: shouldReplaceName ? entry.code : booth.name,
+    logoUrl: entry.logoUrl,
+    name: shouldReplaceName ? brandName : booth.name,
     category,
     color: CATEGORY_COLORS[category],
   };

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_CSV_ASSET } from "../constants/editor";
 import { defaultFloorPlanImage, defaultFloorPlanSize } from "../data/defaultFloorPlan";
 import { loadBoothCatalog } from "../lib/boothCatalog";
-import { buildRouteDemo } from "../lib/demoProject";
+import { A_ZONE_PDF_PATH, buildAZonePdfDemo, buildRouteDemo } from "../lib/demoProject";
 import { fileToDataUrl, readImageSize } from "../lib/floorPlanFiles";
 import { renderPdfFloorPlan } from "../lib/floorPlanPdf";
 import {
@@ -218,6 +218,45 @@ export function useFloorPlanProject() {
     setFloorPlanStatus("Loaded route demo with booths, doors, and walkway turns");
   };
 
+  const loadAZonePdfDemo = async () => {
+    try {
+      setFloorPlanStatus("Loading A zone PDF demo...");
+      const availableCatalogEntries =
+        catalogEntries.length > 0
+          ? catalogEntries
+          : await loadBoothCatalog(DEFAULT_CSV_ASSET);
+      const rendered = await renderPdfFloorPlan(A_ZONE_PDF_PATH);
+      const demo = buildAZonePdfDemo(
+        rendered.image,
+        rendered.size,
+        availableCatalogEntries,
+      );
+
+      if (catalogEntries.length === 0) {
+        setCatalogEntries(availableCatalogEntries);
+        setCatalogStatus(`Loaded ${availableCatalogEntries.length} booth records`);
+      }
+
+      setFloorName(demo.floorName);
+      setFloorPlanImage(demo.floorPlanImage);
+      setFloorPlanSize(demo.floorPlanSize);
+      setCurrentPdfSource(A_ZONE_PDF_PATH);
+      setBooths(demo.booths);
+      setWalkways(demo.walkways);
+      setDoors(demo.doors);
+      setFromDoorId(demo.fromDoorId);
+      setToDoorId(demo.toDoorId);
+      selectMapObject(demo.selectedObject);
+      setToolMode("select");
+      setFloorPlanOpacity(1);
+      setFloorPlanStatus("Loaded A zone booth code demo from construction PDF");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to load A zone PDF demo";
+      setFloorPlanStatus(message);
+    }
+  };
+
   const addBooth = (rect: RectDraft) => {
     const booth = createBoothFromDraft(rect, booths.length + 1);
 
@@ -417,6 +456,7 @@ export function useFloorPlanProject() {
     fromDoorId,
     gridVisible,
     handleUpload,
+    loadAZonePdfDemo,
     loadRouteDemo,
     resetProject,
     routePath,
