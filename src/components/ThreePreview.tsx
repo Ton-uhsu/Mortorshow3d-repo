@@ -172,12 +172,29 @@ function FloorTexture({
   return (
     <mesh receiveShadow rotation-x={-Math.PI / 2}>
       <planeGeometry args={[planeWidth, planeDepth]} />
-      <meshStandardMaterial
+      <meshBasicMaterial
+        depthWrite={opacity >= 0.98}
         map={texture}
         opacity={opacity}
         side={DoubleSide}
+        toneMapped={false}
         transparent={opacity < 1}
       />
+    </mesh>
+  );
+}
+
+function FloorBacking({
+  planeDepth,
+  planeWidth,
+}: {
+  planeDepth: number;
+  planeWidth: number;
+}) {
+  return (
+    <mesh position={[0, -0.026, 0]} rotation-x={-Math.PI / 2}>
+      <planeGeometry args={[planeWidth, planeDepth]} />
+      <meshBasicMaterial color="#d9d4c8" side={DoubleSide} toneMapped={false} />
     </mesh>
   );
 }
@@ -431,11 +448,12 @@ function PreviewSceneCanvas({
       <ambientLight intensity={0.65} />
       <directionalLight
         castShadow={!performanceMode}
-        intensity={1.15}
+        intensity={performanceMode ? 0.95 : 1.15}
         position={[6, 12, 5]}
         shadow-mapSize-height={performanceMode ? 512 : 2048}
         shadow-mapSize-width={performanceMode ? 512 : 2048}
       />
+      <FloorBacking planeDepth={plane.depth} planeWidth={plane.width} />
       <Suspense fallback={null}>
         <FloorTexture
           image={floorPlanImage}
@@ -484,7 +502,18 @@ function PreviewSceneCanvas({
           sectionColor="#35516d"
           sectionSize={2}
         />
-      ) : null}
+      ) : (
+        <Grid
+          args={[plane.width, plane.depth]}
+          cellColor="#94a3b8"
+          cellSize={0.5}
+          fadeDistance={Math.max(plane.width, plane.depth) + 2}
+          fadeStrength={0.45}
+          position={[0, 0.012, 0]}
+          sectionColor="#64748b"
+          sectionSize={2}
+        />
+      )}
       {onMetrics ? <PerformanceProbe onMetrics={onMetrics} /> : null}
       <CameraControls isoLocked={isoLocked} isoViewVersion={isoViewVersion} />
     </Canvas>
