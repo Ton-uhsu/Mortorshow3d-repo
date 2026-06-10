@@ -1,17 +1,13 @@
-import type { SelectedMapObject, ToolMode } from "../../types";
+import type { ToolMode } from "../../types";
 import { cn, ui } from "../../lib/ui";
 
 interface EditorToolbarProps {
-  onDeleteSelected: () => void;
   onToolModeChange: (tool: ToolMode) => void;
-  selectedObject: SelectedMapObject;
   toolMode: ToolMode;
 }
 
 export function EditorToolbar({
-  onDeleteSelected,
   onToolModeChange,
-  selectedObject,
   toolMode,
 }: EditorToolbarProps) {
   const buildPillClass = (active: boolean) =>
@@ -46,17 +42,6 @@ export function EditorToolbar({
         type="button"
       >
         Place door
-      </button>
-      <button
-        className={cn(
-          ui.toolPill,
-          "border-red-500/30 text-red-200 disabled:cursor-not-allowed disabled:opacity-40",
-        )}
-        disabled={!selectedObject}
-        onClick={onDeleteSelected}
-        type="button"
-      >
-        Delete
       </button>
     </div>
   );

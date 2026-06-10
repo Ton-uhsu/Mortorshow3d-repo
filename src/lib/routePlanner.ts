@@ -5,6 +5,7 @@ const GRID_ROWS = 54;
 const DOOR_SEARCH_RADIUS = 10;
 const OBSTACLE_PADDING_X = 1 / GRID_COLUMNS;
 const OBSTACLE_PADDING_Y = 1 / GRID_ROWS;
+const WALKWAY_GRID_TOLERANCE = Math.max(1 / GRID_COLUMNS, 1 / GRID_ROWS) * 0.55;
 
 interface GridNode {
   col: number;
@@ -32,6 +33,40 @@ function pointInsideRect(point: RoutePoint, rect: { x: number; y: number; width:
   );
 }
 
+function distanceToSegment(point: RoutePoint, start: RoutePoint, end: RoutePoint) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+
+  const ratio = clamp(
+    ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared,
+    0,
+    1,
+  );
+  const closest = {
+    x: start.x + ratio * dx,
+    y: start.y + ratio * dy,
+  };
+
+  return Math.hypot(point.x - closest.x, point.y - closest.y);
+}
+
+function pointInsideWalkway(point: RoutePoint, walkway: WalkwayObject) {
+  return walkway.points.some((start, index) => {
+    const end = walkway.points[index + 1];
+
+    if (!end) {
+      return false;
+    }
+
+    return distanceToSegment(point, start, end) <= walkway.width / 2 + WALKWAY_GRID_TOLERANCE;
+  });
+}
+
 function nodeKey(node: GridNode) {
   return `${node.col}:${node.row}`;
 }
@@ -54,7 +89,7 @@ function createWalkableGrid(booths: BoothObject[], walkways: WalkwayObject[]) {
   return Array.from({ length: GRID_ROWS }, (_, row) =>
     Array.from({ length: GRID_COLUMNS }, (_, col) => {
       const point = nodeToPoint({ col, row });
-      const insideWalkway = walkways.some((walkway) => pointInsideRect(point, walkway));
+      const insideWalkway = walkways.some((walkway) => pointInsideWalkway(point, walkway));
       const insideBooth = booths.some((booth) =>
         pointInsideRect(point, {
           x: booth.x - OBSTACLE_PADDING_X,

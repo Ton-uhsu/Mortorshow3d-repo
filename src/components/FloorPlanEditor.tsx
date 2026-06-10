@@ -5,6 +5,7 @@ import type {
   FloorPlanSize,
   RectDraft,
   RoutePath,
+  RoutePoint,
   SelectedMapObject,
   ToolMode,
   WalkwayObject,
@@ -18,6 +19,7 @@ interface FloorPlanEditorProps {
   booths: BoothObject[];
   doors: DoorObject[];
   floorPlanImage: string;
+  floorPlanOpacity: number;
   floorPlanSize: FloorPlanSize;
   gridVisible: boolean;
   routePath: RoutePath | null;
@@ -27,9 +29,11 @@ interface FloorPlanEditorProps {
   walkways: WalkwayObject[];
   onAddBooth: (rect: RectDraft) => void;
   onAddDoor: (door: Omit<DoorObject, "id" | "name">) => void;
-  onAddWalkway: (rect: RectDraft) => void;
+  onAddWalkway: (points: RoutePoint[]) => void;
+  onClearAll: () => void;
   onDeleteSelected: () => void;
   onSelectObject: (selection: SelectedMapObject) => void;
+  onResetProject: () => void;
   onToolModeChange: (tool: ToolMode) => void;
   onUpdateBooth: (id: string, patch: Partial<BoothObject>) => void;
   onUpdateWalkway: (id: string, patch: Partial<WalkwayObject>) => void;
@@ -39,6 +43,7 @@ export function FloorPlanEditor({
   booths,
   doors,
   floorPlanImage,
+  floorPlanOpacity,
   floorPlanSize,
   gridVisible,
   routePath,
@@ -49,8 +54,10 @@ export function FloorPlanEditor({
   onAddBooth,
   onAddDoor,
   onAddWalkway,
+  onClearAll,
   onDeleteSelected,
   onSelectObject,
+  onResetProject,
   onToolModeChange,
   onUpdateBooth,
   onUpdateWalkway,
@@ -63,7 +70,10 @@ export function FloorPlanEditor({
     handleCanvasPointerUp,
     resizeState,
     setDragState,
+    setPointDragState,
     setResizeState,
+    walkwayDraft,
+    walkwayPreviewPoint,
   } = useFloorPlanEditorInteractions({
     booths,
     onAddBooth,
@@ -73,7 +83,6 @@ export function FloorPlanEditor({
     onUpdateBooth,
     onUpdateWalkway,
     toolMode,
-    walkways,
   });
 
   const selectedBooth = useMemo(
@@ -108,17 +117,64 @@ export function FloorPlanEditor({
           <h2 className={ui.panelTitle}>Floor plan canvas</h2>
         </div>
         <EditorToolbar
-          onDeleteSelected={onDeleteSelected}
           onToolModeChange={onToolModeChange}
-          selectedObject={selectedObject}
           toolMode={toolMode}
         />
       </header>
 
       <div className="my-3 flex flex-wrap justify-between gap-3 text-sm text-slate-300">
-        <span>Booths block routes. Walkways are the only walkable zones.</span>
-        <span>Doors snap to booth edges and connect booths to walkways.</span>
+        <span>Booths block routes. Walkways are thick paths you can branch and bend.</span>
+        <span>Draw walkway: click points, Enter to finish, Esc to cancel.</span>
       </div>
+
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <button
+          className={`${ui.buttonDanger} w-full sm:w-auto`}
+          disabled={!selectedObject}
+          onClick={onDeleteSelected}
+          type="button"
+        >
+          Delete selected
+        </button>
+        <button
+          className={`${ui.buttonDanger} w-full sm:w-auto`}
+          onClick={onClearAll}
+          type="button"
+        >
+          Clear all
+        </button>
+        <button
+          className={`${ui.buttonGhost} w-full sm:w-auto`}
+          onClick={onResetProject}
+          type="button"
+        >
+          Reset project
+        </button>
+      </div>
+
+      {selectedWalkway ? (
+        <div className="mb-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/8 p-3 text-sm text-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-semibold text-white">Walkway width</span>
+            <span className="font-mono text-xs text-emerald-100">
+              {(selectedWalkway.width * 100).toFixed(1)}%
+            </span>
+          </div>
+          <input
+            className="mt-3 h-2 w-full accent-emerald-400"
+            max="0.08"
+            min="0.006"
+            onChange={(event) =>
+              onUpdateWalkway(selectedWalkway.id, {
+                width: Number(event.target.value),
+              })
+            }
+            step="0.002"
+            type="range"
+            value={selectedWalkway.width}
+          />
+        </div>
+      ) : null}
 
       <EditorCanvas
         booths={booths}
@@ -126,6 +182,7 @@ export function FloorPlanEditor({
         doors={doors}
         draft={draft}
         floorPlanImage={floorPlanImage}
+        floorPlanOpacity={floorPlanOpacity}
         floorPlanSize={floorPlanSize}
         gridVisible={gridVisible}
         onCanvasPointerDown={handleCanvasPointerDown}
@@ -136,10 +193,13 @@ export function FloorPlanEditor({
         routePath={routePath}
         selectedObject={selectedObject}
         setDragState={setDragState}
+        setPointDragState={setPointDragState}
         setResizeState={setResizeState}
         showLabels={showLabels}
         toolMode={toolMode}
         walkways={walkways}
+        walkwayDraft={walkwayDraft}
+        walkwayPreviewPoint={walkwayPreviewPoint}
       />
 
       <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-300">

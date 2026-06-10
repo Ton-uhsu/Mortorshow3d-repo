@@ -21,34 +21,24 @@ export default function App() {
     <div className="min-h-screen p-3 md:p-4">
       <EditorHeader
         floorName={project.floorName}
-        hasSelection={Boolean(project.selectedObject)}
-        onAutoDraw={() => {
-          void project.autoDrawCurrentPdf();
-        }}
-        onClearAll={project.clearAllMapObjects}
-        onDeleteSelected={project.deleteSelectedObject}
         onExport={project.exportProject}
         onHandleUpload={(file) => {
           void project.handleUpload(file);
         }}
-        onLoadPreset={() => {
-          void project.loadPresetProject();
-        }}
         onLoadRouteDemo={project.loadRouteDemo}
-        onResetProject={project.resetProject}
         uploadRef={uploadRef}
       />
 
       <main className="mt-4 grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <aside className="grid content-start gap-4 xl:sticky xl:top-24">
+        <aside className="grid content-start gap-4 xl:sticky xl:top-4">
           <StatusOverview
-            autoDrawEnabled={project.autoDrawEnabled}
             boothCount={project.booths.length}
             catalogStatus={project.catalogStatus}
             doorCount={project.doors.length}
+            floorPlanOpacity={project.floorPlanOpacity}
             floorPlanStatus={project.floorPlanStatus}
             gridVisible={project.gridVisible}
-            onAutoDrawChange={project.setAutoDrawEnabled}
+            onFloorPlanOpacityChange={project.setFloorPlanOpacity}
             onGridVisibleChange={project.setGridVisible}
             onShowLabelsChange={project.setShowLabels}
             showLabels={project.showLabels}
@@ -95,13 +85,16 @@ export default function App() {
             booths={project.booths}
             doors={project.doors}
             floorPlanImage={project.floorPlanImage}
+            floorPlanOpacity={project.floorPlanOpacity}
             floorPlanSize={project.floorPlanSize}
             gridVisible={project.gridVisible}
             onAddBooth={project.addBooth}
             onAddDoor={project.addDoor}
             onAddWalkway={project.addWalkway}
+            onClearAll={project.clearAllMapObjects}
             onDeleteSelected={project.deleteSelectedObject}
             onSelectObject={project.selectMapObject}
+            onResetProject={project.resetProject}
             onToolModeChange={project.setToolMode}
             onUpdateBooth={project.updateBooth}
             onUpdateWalkway={project.updateWalkway}
@@ -135,6 +128,7 @@ export default function App() {
               booths={project.booths}
               doors={project.doors}
               floorPlanImage={project.floorPlanImage}
+              floorPlanOpacity={project.floorPlanOpacity}
               floorPlanSize={project.floorPlanSize}
               routePath={project.routePath}
               selectedId={project.selectedId}

@@ -3,6 +3,7 @@ import type {
   BoothCatalogEntry,
   BoothObject,
   DoorObject,
+  RoutePoint,
   RectDraft,
   WalkwayObject,
 } from "../types";
@@ -52,17 +53,15 @@ export function createBoothFromDraft(
   };
 }
 
-export function createWalkwayFromDraft(
-  rect: RectDraft,
+export function createWalkwayFromPoints(
+  points: RoutePoint[],
   index: number,
 ): WalkwayObject {
   return {
     id: createWalkwayId(),
     name: `walkway${index}`,
-    x: rect.x,
-    y: rect.y,
-    width: rect.width,
-    depth: rect.depth,
+    points,
+    width: 0.018,
   };
 }
 
@@ -74,6 +73,36 @@ export function createDoorFromPlacement(
     ...door,
     id: createDoorId(),
     name: `door${index}`,
+  };
+}
+
+export function repositionDoorForBooth(
+  door: DoorObject,
+  previousBooth: BoothObject,
+  nextBooth: BoothObject,
+): DoorObject {
+  if (door.edge === "top" || door.edge === "bottom") {
+    const ratio =
+      previousBooth.width > 0
+        ? clamp((door.x - previousBooth.x) / previousBooth.width)
+        : 0.5;
+
+    return {
+      ...door,
+      x: nextBooth.x + ratio * nextBooth.width,
+      y: door.edge === "top" ? nextBooth.y : nextBooth.y + nextBooth.depth,
+    };
+  }
+
+  const ratio =
+    previousBooth.depth > 0
+      ? clamp((door.y - previousBooth.y) / previousBooth.depth)
+      : 0.5;
+
+  return {
+    ...door,
+    x: door.edge === "left" ? nextBooth.x : nextBooth.x + nextBooth.width,
+    y: nextBooth.y + ratio * nextBooth.depth,
   };
 }
 
@@ -100,18 +129,14 @@ export function patchWalkwayWithinBounds(
   walkway: WalkwayObject,
   patch: Partial<WalkwayObject>,
 ): WalkwayObject {
-  const nextX = patch.x ?? walkway.x;
-  const nextY = patch.y ?? walkway.y;
-  const nextWidth = patch.width ?? walkway.width;
-  const nextDepth = patch.depth ?? walkway.depth;
-
   return {
     ...walkway,
     ...patch,
-    x: clamp(nextX, 0, 1 - nextWidth),
-    y: clamp(nextY, 0, 1 - nextDepth),
-    width: clamp(nextWidth, 0.02, 1 - nextX),
-    depth: clamp(nextDepth, 0.02, 1 - nextY),
+    points: (patch.points ?? walkway.points).map((point) => ({
+      x: clamp(point.x),
+      y: clamp(point.y),
+    })),
+    width: clamp(patch.width ?? walkway.width, 0.006, 0.08),
   };
 }
 

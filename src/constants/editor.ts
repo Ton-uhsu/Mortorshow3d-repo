@@ -20,36 +20,4 @@ export const BOOTH_CATEGORIES: Array<{
   { value: "service", label: "Service", color: CATEGORY_COLORS.service },
 ];
 
-export const DEFAULT_PDF_ASSET = "/Doc/THAI-Construction-Manual-crop.pdf";
-export const DEFAULT_CSV_ASSET = "/config/Mortorshow3d-config.csv";
-
-export const MAIN_TOP_CODES = new Set([
-  "A22",
-  "A20",
-  "A16,A18",
-  "A14",
-  "A12",
-  "A12/1",
-  "A10",
-  "A8",
-  "A6",
-  "A4",
-  "A2",
-]);
-
-export const MAIN_BOTTOM_CODES = new Set([
-  "A25",
-  "A24",
-  "A23",
-  "A21",
-  "A19",
-  "A17",
-  "A15",
-  "A13",
-  "A11",
-  "A9",
-  "A7",
-  "A5",
-  "A3",
-  "A1",
-]);
+export const DEFAULT_CSV_ASSET = `${import.meta.env.BASE_URL}config/Mortorshow3d-config.csv`;

@@ -5,6 +5,7 @@ import type {
   FloorPlanSize,
   RectDraft,
   RoutePath,
+  RoutePoint,
   SelectedMapObject,
   ToolMode,
   WalkwayObject,
@@ -14,6 +15,7 @@ import {
   getNormalizedPoint,
   normalizeDraft,
   type DragState,
+  type PointDragState,
   type ResizeState,
 } from "./editorUtils";
 
@@ -23,6 +25,7 @@ interface EditorCanvasProps {
   doors: DoorObject[];
   draft: RectDraft | null;
   floorPlanImage: string;
+  floorPlanOpacity: number;
   floorPlanSize: FloorPlanSize;
   gridVisible: boolean;
   onCanvasPointerDown: (
@@ -39,10 +42,13 @@ interface EditorCanvasProps {
   routePath: RoutePath | null;
   selectedObject: SelectedMapObject;
   setDragState: (state: DragState | null) => void;
+  setPointDragState: (state: PointDragState | null) => void;
   setResizeState: (state: ResizeState | null) => void;
   showLabels: boolean;
   toolMode: ToolMode;
   walkways: WalkwayObject[];
+  walkwayDraft: RoutePoint[] | null;
+  walkwayPreviewPoint: RoutePoint | null;
 }
 
 export function EditorCanvas({
@@ -51,6 +57,7 @@ export function EditorCanvas({
   doors,
   draft,
   floorPlanImage,
+  floorPlanOpacity,
   floorPlanSize,
   gridVisible,
   onCanvasPointerDown,
@@ -61,19 +68,38 @@ export function EditorCanvas({
   routePath,
   selectedObject,
   setDragState,
+  setPointDragState,
   setResizeState,
   showLabels,
   toolMode,
   walkways,
+  walkwayDraft,
+  walkwayPreviewPoint,
 }: EditorCanvasProps) {
   const routePoints = routePath?.points
     .map((point) => `${point.x * 100},${point.y * 100}`)
     .join(" ");
+  const walkwayDraftPoints = walkwayDraft
+    ? [
+        ...walkwayDraft,
+        ...(walkwayPreviewPoint ? [walkwayPreviewPoint] : []),
+      ]
+        .map((point) => `${point.x * 100},${point.y * 100}`)
+        .join(" ")
+    : null;
+
+  const beginPointerInteraction = (
+    event: React.PointerEvent<Element>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
 
   return (
     <div
       className={cn(
-        "relative w-full touch-none select-none overflow-hidden rounded-[24px] border border-white/10 bg-stone-100/95",
+        "floor-plan-canvas relative w-full touch-none select-none overflow-hidden rounded-[24px] border border-white/10",
         gridVisible && "floor-grid",
       )}
       onPointerDown={(event) => onCanvasPointerDown(event, containerRef.current)}
@@ -86,79 +112,146 @@ export function EditorCanvas({
     >
       <img
         alt="Uploaded floor plan"
-        className="block h-full w-full object-contain object-center"
+        className="pointer-events-none block h-full w-full object-contain object-center"
+        draggable={false}
         src={floorPlanImage}
+        style={{ opacity: floorPlanOpacity }}
       />
 
-      {walkways.map((walkway) => {
-        const isSelected =
-          selectedObject?.type === "walkway" && selectedObject.id === walkway.id;
+      <svg
+        className="absolute inset-0 z-[2] h-full w-full overflow-visible"
+        preserveAspectRatio="none"
+        viewBox="0 0 100 100"
+      >
+        {walkways.map((walkway) => {
+          const points = walkway.points
+            .map((point) => `${point.x * 100},${point.y * 100}`)
+            .join(" ");
+          const isSelected =
+            selectedObject?.type === "walkway" && selectedObject.id === walkway.id;
+          const strokeWidth = Math.max(walkway.width * 650, 4);
 
-        return (
-          <button
-            className={cn(
-              "absolute z-[1] flex items-start justify-start border-2 border-emerald-500/90 bg-emerald-500/18 p-1.5 text-left text-[0.72rem] font-extrabold text-emerald-950 shadow-lg shadow-slate-900/15",
-              isSelected && "z-[5] outline-2 outline-white/90",
-            )}
-            key={walkway.id}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (toolMode === "select") {
-                onSelectObject({ type: "walkway", id: walkway.id });
-              }
-            }}
-            onPointerDown={(event) => {
-              if (toolMode !== "select" || event.button !== 0 || !containerRef.current) {
-                return;
-              }
-
-              const bounds = containerRef.current.getBoundingClientRect();
-              const point = getNormalizedPoint(event.clientX, event.clientY, bounds);
-              onSelectObject({ type: "walkway", id: walkway.id });
-              setDragState({
-                id: walkway.id,
-                type: "walkway",
-                originX: walkway.x,
-                originY: walkway.y,
-                startX: point.x,
-                startY: point.y,
-              });
-              event.stopPropagation();
-            }}
-            style={{
-              left: `${walkway.x * 100}%`,
-              top: `${walkway.y * 100}%`,
-              width: `${walkway.width * 100}%`,
-              height: `${walkway.depth * 100}%`,
-            }}
-            type="button"
-          >
-            {showLabels && (
-              <span className="bg-emerald-50/82 px-1.5 py-0.5">{walkway.name}</span>
-            )}
-            {isSelected && toolMode === "select" ? (
-              <span
-                className="absolute -right-1.5 -bottom-1.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-sky-500 shadow-[0_0_0_4px_rgba(15,157,216,0.22)]"
+          return (
+            <g key={walkway.id}>
+              <polyline
+                fill="none"
+                points={points}
+                stroke="transparent"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={strokeWidth + 10}
+                vectorEffect="non-scaling-stroke"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (toolMode === "select") {
+                    onSelectObject({ type: "walkway", id: walkway.id });
+                  }
+                }}
                 onPointerDown={(event) => {
-                  if (!containerRef.current) {
+                  if (toolMode !== "select" || event.button !== 0 || !containerRef.current) {
                     return;
                   }
 
+                  beginPointerInteraction(event);
                   const bounds = containerRef.current.getBoundingClientRect();
                   const point = getNormalizedPoint(event.clientX, event.clientY, bounds);
-                  setResizeState({
+                  onSelectObject({ type: "walkway", id: walkway.id });
+                  setDragState({
                     id: walkway.id,
                     type: "walkway",
-                    originWidth: walkway.width,
-                    originDepth: walkway.depth,
+                    originPoints: walkway.points,
+                    originX: walkway.points[0]?.x ?? 0,
+                    originY: walkway.points[0]?.y ?? 0,
                     startX: point.x,
                     startY: point.y,
                   });
-                  event.stopPropagation();
                 }}
               />
-            ) : null}
-          </button>
+              <polyline
+                className="pointer-events-none"
+                fill="none"
+                points={points}
+                stroke="rgba(255,255,255,0.9)"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={strokeWidth + (isSelected ? 3 : 2)}
+                vectorEffect="non-scaling-stroke"
+              />
+              <polyline
+                className="pointer-events-none"
+                fill="none"
+                points={points}
+                stroke="rgba(16,185,129,0.9)"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={strokeWidth}
+                vectorEffect="non-scaling-stroke"
+              />
+              {isSelected
+                ? walkway.points.map((point, index) => (
+                    <circle
+                      className="cursor-grab active:cursor-grabbing"
+                      cx={point.x * 100}
+                      cy={point.y * 100}
+                      fill="#0ea5e9"
+                      key={`${walkway.id}-${index}`}
+                      onPointerDown={(event) => {
+                        if (toolMode !== "select") {
+                          return;
+                        }
+
+                        beginPointerInteraction(event);
+                        onSelectObject({ type: "walkway", id: walkway.id });
+                        setPointDragState({
+                          originPoints: walkway.points,
+                          pointIndex: index,
+                          walkwayId: walkway.id,
+                        });
+                      }}
+                      r="0.62"
+                      stroke="#ffffff"
+                      strokeWidth="0.18"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))
+                : null}
+            </g>
+          );
+        })}
+
+        {walkwayDraftPoints ? (
+          <polyline
+            fill="none"
+            points={walkwayDraftPoints}
+            stroke="rgba(56,189,248,0.95)"
+            strokeDasharray="8 7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="5"
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
+      </svg>
+
+      {walkways.map((walkway) => {
+        const labelPoint = walkway.points[0];
+
+        if (!showLabels || !labelPoint) {
+          return null;
+        }
+
+        return (
+          <span
+            className="pointer-events-none absolute z-[4] -translate-x-1/2 -translate-y-full bg-emerald-50/88 px-1.5 py-0.5 text-[0.68rem] font-extrabold text-emerald-950 shadow-sm"
+            key={`${walkway.id}-label`}
+            style={{
+              left: `${labelPoint.x * 100}%`,
+              top: `${labelPoint.y * 100}%`,
+            }}
+          >
+            {walkway.name}
+          </span>
         );
       })}
 
@@ -168,8 +261,16 @@ export function EditorCanvas({
           preserveAspectRatio="none"
           viewBox="0 0 100 100"
         >
-          <polyline className="route-line-backdrop" points={routePoints} />
-          <polyline className="route-line" points={routePoints} />
+          <polyline
+            className="route-line-backdrop"
+            points={routePoints}
+            vectorEffect="non-scaling-stroke"
+          />
+          <polyline
+            className="route-line"
+            points={routePoints}
+            vectorEffect="non-scaling-stroke"
+          />
         </svg>
       ) : null}
 
@@ -184,6 +285,7 @@ export function EditorCanvas({
             )}
             key={booth.id}
             onClick={(event) => {
+              event.preventDefault();
               event.stopPropagation();
               if (toolMode === "select") {
                 onSelectObject({ type: "booth", id: booth.id });
@@ -194,6 +296,7 @@ export function EditorCanvas({
                 return;
               }
 
+              beginPointerInteraction(event);
               const bounds = containerRef.current.getBoundingClientRect();
               const point = getNormalizedPoint(event.clientX, event.clientY, bounds);
               onSelectObject({ type: "booth", id: booth.id });
@@ -205,7 +308,6 @@ export function EditorCanvas({
                 startX: point.x,
                 startY: point.y,
               });
-              event.stopPropagation();
             }}
             style={{
               backgroundColor: `${booth.color}55`,
@@ -228,6 +330,7 @@ export function EditorCanvas({
                     return;
                   }
 
+                  beginPointerInteraction(event);
                   const bounds = containerRef.current.getBoundingClientRect();
                   const point = getNormalizedPoint(event.clientX, event.clientY, bounds);
                   setResizeState({
@@ -238,7 +341,6 @@ export function EditorCanvas({
                     startX: point.x,
                     startY: point.y,
                   });
-                  event.stopPropagation();
                 }}
               />
             ) : null}
@@ -257,6 +359,7 @@ export function EditorCanvas({
           )}
           key={door.id}
           onClick={(event) => {
+            event.preventDefault();
             event.stopPropagation();
             if (toolMode === "select") {
               onSelectObject({ type: "door", id: door.id });

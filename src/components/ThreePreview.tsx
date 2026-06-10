@@ -1,7 +1,9 @@
-import { Suspense, useMemo } from "react";
-import { Canvas, useLoader } from "@react-three/fiber";
-import { Edges, Grid, Line, OrbitControls } from "@react-three/drei";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useLoader, useThree } from "@react-three/fiber";
+import { Edges, Grid, Html, Line, OrbitControls } from "@react-three/drei";
 import { DoubleSide, MathUtils, SRGBColorSpace, TextureLoader } from "three";
+import type { Camera } from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { ui } from "../lib/ui";
 import type {
   BoothObject,
@@ -15,6 +17,7 @@ interface ThreePreviewProps {
   booths: BoothObject[];
   doors: DoorObject[];
   floorPlanImage: string;
+  floorPlanOpacity: number;
   floorPlanSize: FloorPlanSize;
   routePath: RoutePath | null;
   selectedId: string | null;
@@ -22,6 +25,19 @@ interface ThreePreviewProps {
 }
 
 const MAX_PLANE_DIMENSION = 14;
+const ISO_POLAR_ANGLE = Math.acos(1 / Math.sqrt(3));
+const DOOR_CUTOUT_HEIGHT_RATIO = 0.82;
+const DOOR_CUTOUT_MIN_HEIGHT = 0.13;
+const DOOR_CUTOUT_OFFSET = 0.012;
+const DOOR_CUTOUT_WIDTH = 0.46;
+
+function isDoorHorizontal(door: DoorObject) {
+  return door.edge === "top" || door.edge === "bottom";
+}
+
+function isRouteEndpoint(index: number, pointsLength: number) {
+  return index === 0 || index === pointsLength - 1;
+}
 
 function getPlaneDimensions(size: FloorPlanSize) {
   const aspectRatio = size.width / size.height;
@@ -39,12 +55,73 @@ function getPlaneDimensions(size: FloorPlanSize) {
   };
 }
 
+function setIsometricCamera(
+  camera: Camera,
+  controls: OrbitControlsImpl | null,
+  preserveAzimuth: boolean,
+) {
+  const distance = Math.max(camera.position.length(), 12);
+  const azimuth = preserveAzimuth
+    ? Math.atan2(camera.position.x, camera.position.z)
+    : Math.PI / 4;
+  const horizontalDistance = Math.sin(ISO_POLAR_ANGLE) * distance;
+
+  camera.position.set(
+    Math.sin(azimuth) * horizontalDistance,
+    Math.cos(ISO_POLAR_ANGLE) * distance,
+    Math.cos(azimuth) * horizontalDistance,
+  );
+  controls?.target.set(0, 0, 0);
+  camera.lookAt(0, 0, 0);
+  controls?.update();
+}
+
+function CameraControls({
+  isoLocked,
+  isoViewVersion,
+}: {
+  isoLocked: boolean;
+  isoViewVersion: number;
+}) {
+  const { camera } = useThree();
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
+
+  useEffect(() => {
+    if (isoViewVersion === 0) {
+      return;
+    }
+
+    setIsometricCamera(camera, controlsRef.current, false);
+  }, [camera, isoViewVersion]);
+
+  useEffect(() => {
+    if (!isoLocked) {
+      return;
+    }
+
+    setIsometricCamera(camera, controlsRef.current, true);
+  }, [camera, isoLocked]);
+
+  return (
+    <OrbitControls
+      enablePan
+      enableRotate
+      enableZoom
+      maxPolarAngle={isoLocked ? ISO_POLAR_ANGLE : Math.PI / 2.15}
+      minPolarAngle={isoLocked ? ISO_POLAR_ANGLE : 0.1}
+      ref={controlsRef}
+    />
+  );
+}
+
 function FloorTexture({
   image,
+  opacity,
   planeDepth,
   planeWidth,
 }: {
   image: string;
+  opacity: number;
   planeDepth: number;
   planeWidth: number;
 }) {
@@ -54,7 +131,12 @@ function FloorTexture({
   return (
     <mesh receiveShadow rotation-x={-Math.PI / 2}>
       <planeGeometry args={[planeWidth, planeDepth]} />
-      <meshStandardMaterial map={texture} side={DoubleSide} />
+      <meshStandardMaterial
+        map={texture}
+        opacity={opacity}
+        side={DoubleSide}
+        transparent={opacity < 1}
+      />
     </mesh>
   );
 }
@@ -108,18 +190,77 @@ function WalkwayMeshes({
   return (
     <>
       {walkways.map((walkway) => {
-        const width = walkway.width * planeWidth;
-        const depth = walkway.depth * planeDepth;
-        const x = (walkway.x + walkway.width / 2 - 0.5) * planeWidth;
-        const z = (walkway.y + walkway.depth / 2 - 0.5) * planeDepth;
+        return (
+          <Line
+            color="#10b981"
+            depthTest={false}
+            key={walkway.id}
+            lineWidth={Math.max(walkway.width * 180, 3.5)}
+            points={walkway.points.map((point) => [
+              (point.x - 0.5) * planeWidth,
+              0.075,
+              (point.y - 0.5) * planeDepth,
+            ])}
+            renderOrder={8}
+            transparent
+            opacity={0.42}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function DoorCutouts({
+  booths,
+  doors,
+  planeDepth,
+  planeWidth,
+}: {
+  booths: BoothObject[];
+  doors: DoorObject[];
+  planeDepth: number;
+  planeWidth: number;
+}) {
+  return (
+    <>
+      {doors.map((door) => {
+        const booth = booths.find((item) => item.id === door.boothId);
+        const boothHeight = booth?.extrudeHeight ?? 0.2;
+        const cutoutHeight = Math.max(
+          DOOR_CUTOUT_MIN_HEIGHT,
+          boothHeight * DOOR_CUTOUT_HEIGHT_RATIO,
+        );
+        const x = (door.x - 0.5) * planeWidth;
+        const z = (door.y - 0.5) * planeDepth;
+        const isHorizontal = isDoorHorizontal(door);
+        const offsetX =
+          door.edge === "left"
+            ? -DOOR_CUTOUT_OFFSET
+            : door.edge === "right"
+              ? DOOR_CUTOUT_OFFSET
+              : 0;
+        const offsetZ =
+          door.edge === "top"
+            ? -DOOR_CUTOUT_OFFSET
+            : door.edge === "bottom"
+              ? DOOR_CUTOUT_OFFSET
+              : 0;
 
         return (
-          <mesh key={walkway.id} position={[x, 0.035, z]} rotation-x={-Math.PI / 2}>
-            <planeGeometry args={[width, depth]} />
+          <mesh
+            key={door.id}
+            position={[x + offsetX, cutoutHeight / 2 + 0.012, z + offsetZ]}
+            renderOrder={30}
+            rotation-y={isHorizontal ? 0 : Math.PI / 2}
+          >
+            <planeGeometry args={[DOOR_CUTOUT_WIDTH, cutoutHeight]} />
             <meshStandardMaterial
-              color="#10b981"
-              opacity={0.14}
-              transparent
+              color="#ffffff"
+              depthTest={false}
+              emissive="#ffffff"
+              emissiveIntensity={0.08}
+              roughness={0.3}
               side={DoubleSide}
             />
           </mesh>
@@ -129,29 +270,32 @@ function WalkwayMeshes({
   );
 }
 
-function DoorMarkers({
-  doors,
-  planeDepth,
-  planeWidth,
-}: {
-  doors: DoorObject[];
-  planeDepth: number;
-  planeWidth: number;
-}) {
+function StartMarkerIcon() {
   return (
-    <>
-      {doors.map((door) => {
-        const x = (door.x - 0.5) * planeWidth;
-        const z = (door.y - 0.5) * planeDepth;
+    <svg height="43.2" viewBox="0 0 20 48" width="18">
+      <path
+        d="M1.37965 29.3246C1.5778 31.2167 2.27661 33.0694 3.83078 33.775C4.0998 37.1861 4.7451 40.2227 5.65918 42.4784C6.14556 43.6787 6.72883 44.71 7.41453 45.4578C8.10027 46.2056 8.97065 46.7527 9.99989 46.7527C11.0292 46.7527 11.8995 46.2055 12.585 45.4576C13.2706 44.7098 13.8536 43.6785 14.3398 42.4783C15.2536 40.2226 15.8988 37.186 16.1688 33.7752C17.7232 33.0697 18.422 31.2169 18.6201 29.3247C18.8386 27.2385 18.5165 24.6502 17.6475 22.0285L17.6473 22.0278C16.9657 19.9761 16.0319 18.1622 14.9848 16.7474C17.0884 15.1587 18.4471 12.5964 18.4471 9.7152C18.4471 4.93539 14.6967 1 9.99966 1C5.30272 1 1.54993 4.93527 1.54993 9.7152C1.54993 12.5961 2.90839 15.1583 5.01167 16.747C3.9635 18.1625 3.03185 19.977 2.3522 22.0286C1.48319 24.6503 1.16118 27.2385 1.37965 29.3246Z"
+        fill="#1890FF"
+        stroke="#FFFFFF"
+        strokeWidth="2"
+      />
+    </svg>
+  );
+}
 
-        return (
-          <mesh key={door.id} position={[x, 0.12, z]}>
-            <sphereGeometry args={[0.11, 18, 18]} />
-            <meshStandardMaterial color="#1d9bf0" emissive="#0b63a8" emissiveIntensity={0.35} />
-          </mesh>
-        );
-      })}
-    </>
+function EndFlagIcon() {
+  return (
+    <svg height="42" viewBox="0 0 42 48" width="36">
+      <path
+        d="M9 45V6M9 7C17 2 25 12 34 7V27C25 32 17 22 9 27"
+        fill="#ffffff"
+        stroke="#0f172a"
+        strokeLinejoin="round"
+        strokeWidth="3"
+      />
+      <path d="M9 7C17 2 25 12 34 7V27C25 32 17 22 9 27Z" fill="#f97316" />
+      <path d="M9 7C17 2 25 12 34 7V27C25 32 17 22 9 27Z" fill="none" stroke="#ffffff" strokeWidth="2" />
+    </svg>
   );
 }
 
@@ -168,46 +312,124 @@ function RouteLine({
     return null;
   }
 
+  const points = routePath.points.map((point) => [
+    (point.x - 0.5) * planeWidth,
+    0.18,
+    (point.y - 0.5) * planeDepth,
+  ] as const);
+
   return (
     <>
       <Line
-        color="#ffffff"
-        depthTest={false}
-        lineWidth={8}
-        points={routePath.points.map((point) => [
-          (point.x - 0.5) * planeWidth,
-          0.34,
-          (point.y - 0.5) * planeDepth,
-        ])}
-        renderOrder={20}
-      />
-      <Line
-        color="#1d9bf0"
+        color="#06b6d4"
         depthTest={false}
         lineWidth={5}
-        points={routePath.points.map((point) => [
-          (point.x - 0.5) * planeWidth,
-          0.36,
-          (point.y - 0.5) * planeDepth,
-        ])}
-        renderOrder={21}
+        points={points}
+        renderOrder={20}
       />
-      {routePath.points.map((point, index) => (
-        <mesh
-          key={`${point.x}-${point.y}-${index}`}
-          position={[(point.x - 0.5) * planeWidth, 0.39, (point.y - 0.5) * planeDepth]}
-          renderOrder={22}
-        >
-          <sphereGeometry args={[index === 0 || index === routePath.points.length - 1 ? 0.13 : 0.07, 16, 16]} />
-          <meshStandardMaterial
-            color="#1d9bf0"
-            depthTest={false}
-            emissive="#0b63a8"
-            emissiveIntensity={0.45}
-          />
-        </mesh>
-      ))}
+      {routePath.points.map((point, index) => {
+        if (!isRouteEndpoint(index, routePath.points.length)) {
+          return null;
+        }
+
+        return (
+          <Html
+            center
+            distanceFactor={8}
+            key={`${point.x}-${point.y}-${index}`}
+            position={[(point.x - 0.5) * planeWidth, 0.2, (point.y - 0.5) * planeDepth]}
+            style={{
+              filter: "drop-shadow(0 8px 10px rgba(15, 23, 42, 0.35))",
+              pointerEvents: "none",
+              transform: "translateY(-18px)",
+            }}
+          >
+            {index === 0 ? <StartMarkerIcon /> : <EndFlagIcon />}
+          </Html>
+        );
+      })}
     </>
+  );
+}
+
+function PreviewSceneCanvas({
+  booths,
+  doors,
+  floorPlanImage,
+  floorPlanOpacity,
+  gridSize,
+  isoLocked,
+  isoViewVersion,
+  plane,
+  routePath,
+  selectedId,
+  shadowPlaneSize,
+  walkways,
+}: ThreePreviewProps & {
+  gridSize: number;
+  isoLocked: boolean;
+  isoViewVersion: number;
+  plane: { depth: number; width: number };
+  shadowPlaneSize: number;
+}) {
+  return (
+    <Canvas camera={{ fov: 42, position: [9, 9, 8] }} shadows>
+      <color args={["#101721"]} attach="background" />
+      <ambientLight intensity={0.65} />
+      <directionalLight
+        castShadow
+        intensity={1.15}
+        position={[6, 12, 5]}
+        shadow-mapSize-height={2048}
+        shadow-mapSize-width={2048}
+      />
+      <Suspense fallback={null}>
+        <FloorTexture
+          image={floorPlanImage}
+          opacity={floorPlanOpacity}
+          planeDepth={plane.depth}
+          planeWidth={plane.width}
+        />
+      </Suspense>
+      <mesh receiveShadow position={[0, -0.02, 0]} rotation-x={-Math.PI / 2}>
+        <planeGeometry args={[shadowPlaneSize, shadowPlaneSize]} />
+        <shadowMaterial opacity={0.25} />
+      </mesh>
+      <WalkwayMeshes
+        planeDepth={plane.depth}
+        planeWidth={plane.width}
+        walkways={walkways}
+      />
+      <BoothMeshes
+        booths={booths}
+        planeDepth={plane.depth}
+        planeWidth={plane.width}
+        selectedId={selectedId}
+      />
+      <RouteLine
+        planeDepth={plane.depth}
+        planeWidth={plane.width}
+        routePath={routePath}
+      />
+      <DoorCutouts
+        booths={booths}
+        doors={doors}
+        planeDepth={plane.depth}
+        planeWidth={plane.width}
+      />
+      <Grid
+        args={[gridSize, gridSize]}
+        cellColor="#25364a"
+        cellSize={0.5}
+        fadeDistance={22}
+        fadeStrength={1}
+        infiniteGrid
+        position={[0, 0.01, 0]}
+        sectionColor="#35516d"
+        sectionSize={2}
+      />
+      <CameraControls isoLocked={isoLocked} isoViewVersion={isoViewVersion} />
+    </Canvas>
   );
 }
 
@@ -215,11 +437,15 @@ export function ThreePreview({
   booths,
   doors,
   floorPlanImage,
+  floorPlanOpacity,
   floorPlanSize,
   routePath,
   selectedId,
   walkways,
 }: ThreePreviewProps) {
+  const [isoLocked, setIsoLocked] = useState(false);
+  const [isoViewVersion, setIsoViewVersion] = useState(0);
+  const [largePreviewOpen, setLargePreviewOpen] = useState(false);
   const stats = useMemo(() => {
     const totalHeight = booths.reduce((sum, booth) => sum + booth.extrudeHeight, 0);
     return {
@@ -230,72 +456,80 @@ export function ThreePreview({
   const plane = useMemo(() => getPlaneDimensions(floorPlanSize), [floorPlanSize]);
   const gridSize = Math.max(plane.width, plane.depth) + 8;
   const shadowPlaneSize = Math.max(plane.width, plane.depth) + 6;
+  const sceneProps = {
+    booths,
+    doors,
+    floorPlanImage,
+    floorPlanOpacity,
+    floorPlanSize,
+    gridSize,
+    isoLocked,
+    isoViewVersion,
+    plane,
+    routePath,
+    selectedId,
+    shadowPlaneSize,
+    walkways,
+  };
+
+  useEffect(() => {
+    if (!largePreviewOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setLargePreviewOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [largePreviewOpen]);
 
   return (
+    <>
     <section className={`${ui.panel} flex min-h-[420px] flex-col lg:min-h-[calc(100vh-8.5rem)]`}>
       <header className={ui.panelHeader}>
         <div>
           <p className={ui.eyebrow}>3D Preview</p>
           <h2 className={ui.panelTitle}>Extruded scene</h2>
         </div>
-        <div className="min-w-[92px] rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-center">
-          <strong className="block text-xl font-semibold text-white">{stats.total}</strong>
-          <span className="text-sm text-slate-300">objects</span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            className="rounded-2xl border border-emerald-300/30 bg-emerald-400/14 px-3 py-2 text-sm font-semibold text-emerald-50 transition hover:-translate-y-px hover:bg-emerald-400/22"
+            onClick={() => setLargePreviewOpen(true)}
+            type="button"
+          >
+            Large preview
+          </button>
+          <button
+            className="rounded-2xl border border-sky-300/30 bg-sky-400/14 px-3 py-2 text-sm font-semibold text-sky-50 transition hover:-translate-y-px hover:bg-sky-400/22"
+            onClick={() => setIsoViewVersion((version) => version + 1)}
+            type="button"
+          >
+            Iso
+          </button>
+          <button
+            className={`rounded-2xl border px-3 py-2 text-sm font-semibold transition hover:-translate-y-px ${
+              isoLocked
+                ? "border-amber-300/55 bg-amber-300/20 text-amber-50"
+                : "border-white/10 bg-white/5 text-slate-100"
+            }`}
+            onClick={() => setIsoLocked((locked) => !locked)}
+            type="button"
+          >
+            Iso lock
+          </button>
+          <div className="min-w-[92px] rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-center">
+            <strong className="block text-xl font-semibold text-white">{stats.total}</strong>
+            <span className="text-sm text-slate-300">objects</span>
+          </div>
         </div>
       </header>
 
       <div className="mt-3 min-h-[420px] flex-1 overflow-hidden rounded-[24px] border border-white/10">
-        <Canvas camera={{ fov: 42, position: [9, 9, 8] }} shadows>
-          <color args={["#101721"]} attach="background" />
-          <ambientLight intensity={0.65} />
-          <directionalLight
-            castShadow
-            intensity={1.15}
-            position={[6, 12, 5]}
-            shadow-mapSize-height={2048}
-            shadow-mapSize-width={2048}
-          />
-          <Suspense fallback={null}>
-            <FloorTexture
-              image={floorPlanImage}
-              planeDepth={plane.depth}
-              planeWidth={plane.width}
-            />
-          </Suspense>
-          <mesh receiveShadow position={[0, -0.02, 0]} rotation-x={-Math.PI / 2}>
-            <planeGeometry args={[shadowPlaneSize, shadowPlaneSize]} />
-            <shadowMaterial opacity={0.25} />
-          </mesh>
-          <WalkwayMeshes
-            planeDepth={plane.depth}
-            planeWidth={plane.width}
-            walkways={walkways}
-          />
-          <BoothMeshes
-            booths={booths}
-            planeDepth={plane.depth}
-            planeWidth={plane.width}
-            selectedId={selectedId}
-          />
-          <DoorMarkers doors={doors} planeDepth={plane.depth} planeWidth={plane.width} />
-          <RouteLine
-            planeDepth={plane.depth}
-            planeWidth={plane.width}
-            routePath={routePath}
-          />
-          <Grid
-            args={[gridSize, gridSize]}
-            cellColor="#25364a"
-            cellSize={0.5}
-            fadeDistance={22}
-            fadeStrength={1}
-            infiniteGrid
-            position={[0, 0.01, 0]}
-            sectionColor="#35516d"
-            sectionSize={2}
-          />
-          <OrbitControls enablePan enableRotate enableZoom maxPolarAngle={Math.PI / 2.15} />
-        </Canvas>
+        <PreviewSceneCanvas {...sceneProps} />
       </div>
 
       <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-300">
@@ -305,9 +539,54 @@ export function ThreePreview({
         </div>
         <div>
           <span className={ui.statsLabel}>Camera</span>
-          <strong className={ui.statsValue}>Orbit enabled</strong>
+          <strong className={ui.statsValue}>
+            {isoLocked ? "Iso orbit lock" : "Free orbit"}
+          </strong>
         </div>
       </footer>
     </section>
+    {largePreviewOpen ? (
+      <div className="fixed inset-0 z-50 bg-slate-950/88 p-2 backdrop-blur-md sm:p-4">
+        <section className="flex h-[100dvh] flex-col overflow-hidden rounded-[24px] border border-white/12 bg-slate-950 shadow-[0_32px_120px_rgba(0,0,0,0.6)] sm:h-[calc(100dvh-2rem)]">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-3 py-3 sm:px-5">
+            <div>
+              <p className={ui.eyebrow}>Large 3D Preview</p>
+              <h2 className="text-lg font-semibold text-white sm:text-2xl">Extruded scene</h2>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                className="rounded-2xl border border-sky-300/30 bg-sky-400/14 px-3 py-2 text-sm font-semibold text-sky-50"
+                onClick={() => setIsoViewVersion((version) => version + 1)}
+                type="button"
+              >
+                Iso
+              </button>
+              <button
+                className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${
+                  isoLocked
+                    ? "border-amber-300/55 bg-amber-300/20 text-amber-50"
+                    : "border-white/10 bg-white/5 text-slate-100"
+                }`}
+                onClick={() => setIsoLocked((locked) => !locked)}
+                type="button"
+              >
+                Iso lock
+              </button>
+              <button
+                className="rounded-2xl border border-white/12 bg-white/8 px-3 py-2 text-sm font-semibold text-white"
+                onClick={() => setLargePreviewOpen(false)}
+                type="button"
+              >
+                Close
+              </button>
+            </div>
+          </header>
+          <div className="min-h-0 flex-1 touch-none">
+            <PreviewSceneCanvas {...sceneProps} />
+          </div>
+        </section>
+      </div>
+    ) : null}
+    </>
   );
 }

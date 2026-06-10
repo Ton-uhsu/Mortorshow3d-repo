@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type React from "react";
 import type {
   BoothObject,
   DoorObject,
   RectDraft,
+  RoutePoint,
   SelectedMapObject,
   ToolMode,
   WalkwayObject,
@@ -12,9 +13,11 @@ import { clamp } from "../../lib/geometry";
 import {
   getNearestBoothEdge,
   getNormalizedPoint,
+  getOrthogonalPoint,
   MIN_SIZE,
   normalizeDraft,
   type DragState,
+  type PointDragState,
   type ResizeState,
 } from "./editorUtils";
 
@@ -22,12 +25,11 @@ interface UseFloorPlanEditorInteractionsOptions {
   booths: BoothObject[];
   onAddBooth: (rect: RectDraft) => void;
   onAddDoor: (door: Omit<DoorObject, "id" | "name">) => void;
-  onAddWalkway: (rect: RectDraft) => void;
+  onAddWalkway: (points: RoutePoint[]) => void;
   onSelectObject: (selection: SelectedMapObject) => void;
   onUpdateBooth: (id: string, patch: Partial<BoothObject>) => void;
   onUpdateWalkway: (id: string, patch: Partial<WalkwayObject>) => void;
   toolMode: ToolMode;
-  walkways: WalkwayObject[];
 }
 
 export function useFloorPlanEditorInteractions({
@@ -39,11 +41,48 @@ export function useFloorPlanEditorInteractions({
   onUpdateBooth,
   onUpdateWalkway,
   toolMode,
-  walkways,
 }: UseFloorPlanEditorInteractionsOptions) {
   const [draft, setDraft] = useState<RectDraft | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [resizeState, setResizeState] = useState<ResizeState | null>(null);
+  const [pointDragState, setPointDragState] = useState<PointDragState | null>(null);
+  const [walkwayDraft, setWalkwayDraft] = useState<RoutePoint[] | null>(null);
+  const [walkwayPreviewPoint, setWalkwayPreviewPoint] = useState<RoutePoint | null>(null);
+
+  useEffect(() => {
+    if (toolMode !== "draw-walkway") {
+      setWalkwayDraft(null);
+      setWalkwayPreviewPoint(null);
+    }
+  }, [toolMode]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (toolMode !== "draw-walkway" || !walkwayDraft) {
+        return;
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+
+        if (walkwayDraft.length >= 2) {
+          onAddWalkway(walkwayDraft);
+        }
+
+        setWalkwayDraft(null);
+        setWalkwayPreviewPoint(null);
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setWalkwayDraft(null);
+        setWalkwayPreviewPoint(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onAddWalkway, toolMode, walkwayDraft]);
 
   const handleCanvasPointerDown = (
     event: React.PointerEvent<HTMLDivElement>,
@@ -71,7 +110,25 @@ export function useFloorPlanEditorInteractions({
       return;
     }
 
-    if (toolMode !== "draw-booth" && toolMode !== "draw-walkway") {
+    if (toolMode === "draw-walkway") {
+      setWalkwayDraft((current) => {
+        const lastPoint = current?.at(-1);
+        const nextPoint = lastPoint ? getOrthogonalPoint(lastPoint, point) : point;
+
+        if (
+          lastPoint &&
+          Math.hypot(nextPoint.x - lastPoint.x, nextPoint.y - lastPoint.y) < 0.006
+        ) {
+          return current;
+        }
+
+        return current ? [...current, nextPoint] : [point];
+      });
+      setWalkwayPreviewPoint(point);
+      return;
+    }
+
+    if (toolMode !== "draw-booth") {
       if (toolMode === "select") {
         onSelectObject(null);
       }
@@ -101,32 +158,49 @@ export function useFloorPlanEditorInteractions({
       return;
     }
 
+    if (walkwayDraft) {
+      const lastPoint = walkwayDraft.at(-1);
+      setWalkwayPreviewPoint(lastPoint ? getOrthogonalPoint(lastPoint, point) : point);
+      return;
+    }
+
+    if (pointDragState) {
+      const nextPoints = pointDragState.originPoints.map((originPoint, index) =>
+        index === pointDragState.pointIndex ? point : originPoint,
+      );
+
+      onUpdateWalkway(pointDragState.walkwayId, { points: nextPoints });
+      return;
+    }
+
     if (dragState) {
-      const nextX = clamp(dragState.originX + (point.x - dragState.startX), 0, 1);
-      const nextY = clamp(dragState.originY + (point.y - dragState.startY), 0, 1);
-      const current =
-        dragState.type === "booth"
-          ? booths.find((booth) => booth.id === dragState.id)
-          : walkways.find((walkway) => walkway.id === dragState.id);
-
-      if (!current) {
-        return;
-      }
-
-      const patch = {
-        x: clamp(nextX, 0, 1 - current.width),
-        y: clamp(nextY, 0, 1 - current.depth),
-      };
-
       if (dragState.type === "booth") {
+        const current = booths.find((booth) => booth.id === dragState.id);
+
+        if (!current) {
+          return;
+        }
+
+        const patch = {
+          x: clamp(dragState.originX + (point.x - dragState.startX), 0, 1 - current.width),
+          y: clamp(dragState.originY + (point.y - dragState.startY), 0, 1 - current.depth),
+        };
+
         onUpdateBooth(dragState.id, patch);
       } else {
-        onUpdateWalkway(dragState.id, patch);
+        const nextPoints = dragState.originPoints?.map((originPoint) => ({
+          x: clamp(originPoint.x + (point.x - dragState.startX), 0, 1),
+          y: clamp(originPoint.y + (point.y - dragState.startY), 0, 1),
+        }));
+
+        if (nextPoints) {
+          onUpdateWalkway(dragState.id, { points: nextPoints });
+        }
       }
       return;
     }
 
-    if (!resizeState) {
+    if (!resizeState || resizeState.type !== "booth") {
       return;
     }
 
@@ -140,10 +214,7 @@ export function useFloorPlanEditorInteractions({
       MIN_SIZE,
       1,
     );
-    const current =
-      resizeState.type === "booth"
-        ? booths.find((booth) => booth.id === resizeState.id)
-        : walkways.find((walkway) => walkway.id === resizeState.id);
+    const current = booths.find((booth) => booth.id === resizeState.id);
 
     if (!current) {
       return;
@@ -154,11 +225,7 @@ export function useFloorPlanEditorInteractions({
       depth: clamp(depth, MIN_SIZE, 1 - current.y),
     };
 
-    if (resizeState.type === "booth") {
-      onUpdateBooth(resizeState.id, patch);
-    } else {
-      onUpdateWalkway(resizeState.id, patch);
-    }
+    onUpdateBooth(resizeState.id, patch);
   };
 
   const handleCanvasPointerUp = () => {
@@ -173,17 +240,14 @@ export function useFloorPlanEditorInteractions({
           depth: clamp(normalized.depth, MIN_SIZE, 1 - normalized.y),
         };
 
-        if (toolMode === "draw-walkway") {
-          onAddWalkway(rect);
-        } else {
-          onAddBooth(rect);
-        }
+        onAddBooth(rect);
       }
 
       setDraft(null);
     }
 
     setDragState(null);
+    setPointDragState(null);
     setResizeState(null);
   };
 
@@ -195,6 +259,9 @@ export function useFloorPlanEditorInteractions({
     handleCanvasPointerUp,
     resizeState,
     setDragState,
+    setPointDragState,
     setResizeState,
+    walkwayDraft,
+    walkwayPreviewPoint,
   };
 }

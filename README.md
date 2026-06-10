@@ -1,95 +1,107 @@
 # Mortorshow3D Floor Plan Editor
 
-เว็บต้นแบบสำหรับแปลง `2D floor plan` ให้กลายเป็น `custom 3D map` แบบแก้ไขเองได้
+Web app for turning a 2D floor plan into an editable booth layout with a live 3D preview.
 
-แนวคิดของเวอร์ชันนี้อิงจาก workflow แบบเครื่องมือ map editor:
+The current version is focused on manual editing:
+- Upload a floor plan image or PDF
+- Draw booths and walkways on top of the plan
+- Place doors for route planning
+- Edit booth properties from the inspector
+- Preview the result in 3D
+- Export the map data as JSON
 
-1. อัปโหลด floor plan 2D
-2. วาง floor plan ลงบนแผนที่จริง
-3. วาดพื้นที่สี่เหลี่ยมบน floor plan เพื่อ extrude เป็น 3D
-4. ตั้งค่าสี หมวดหมู่ ความสูง ความกว้าง ความลึก และการหมุน
-5. ตั้งชื่อ object เช่น `booth1`, `booth2`
-6. ได้แผนที่ 3D ที่ custom เองจาก floor plan 2D
+## Current Features
 
-ตอนนี้เวอร์ชันใน repo โฟกัสที่ข้อ `1, 3, 4, 5, 6` ก่อน ส่วนการผูก floor plan เข้ากับแผนที่จริงยังถูกพักไว้สำหรับรอบถัดไป
-
-## MVP ที่ทำแล้ว
-
-- อัปโหลดภาพ floor plan จากเครื่อง
-- มี floor plan ตัวอย่างให้เริ่มลองได้ทันที
-- วาดสี่เหลี่ยมบนภาพเพื่อสร้าง booth footprint
-- เลือก object แล้วลากย้ายหรือ resize ได้
-- แก้ `name`, `category`, `color`, `3D height`, `width`, `depth`, `rotation`
-- ดู 3D preview แบบ real-time จากข้อมูลเดียวกัน
-- duplicate / delete object
-- export โปรเจกต์เป็น JSON
+- Upload custom floor plans from image files or PDF files
+- Draw booth rectangles on top of the floor plan
+- Draw walkway zones
+- Place doors snapped to booth edges
+- Move and resize booths and walkways
+- Edit booth name, catalog link, category, color, size, height, and rotation
+- Route preview between doors using walkway areas
+- Real-time 3D preview with Three.js
+- Duplicate and delete selected objects
+- Export project data to JSON
+- Built-in route demo for quick testing
 
 ## Tech Stack
 
 - React 19
-- Vite
 - TypeScript
+- Vite 8
+- Tailwind CSS v4
 - Three.js
 - `@react-three/fiber`
 - `@react-three/drei`
+- `pdfjs-dist` for rendering PDF floor plans
+- `papaparse` for booth catalog CSV parsing
 
-## การรัน
+## Project Structure
+
+```text
+src/
+  App.tsx
+  main.tsx
+  styles.css
+  types.ts
+  constants/
+  components/
+    app/
+    floorPlanEditor/
+    FloorPlanEditor.tsx
+    InspectorPanel.tsx
+    ThreePreview.tsx
+  data/
+  hooks/
+  lib/
+```
+
+## Getting Started
 
 ```bash
 npm install
 npm run dev
 ```
 
-เปิดที่:
+Default local URL:
 
 ```text
 http://127.0.0.1:5173
 ```
 
-ถ้าต้องการ build:
+Production build:
 
 ```bash
 npm run build
 ```
 
-## วิธีใช้งานเร็วๆ
+Preview production build:
 
-1. กด `Upload floor plan`
-2. เลือก `Draw booth`
-3. ลากบนภาพเพื่อสร้างสี่เหลี่ยม
-4. คลิก object ที่สร้างแล้วแก้ค่าจากฝั่ง `Inspector`
-5. ดูผล extrude ใน `3D Preview`
-6. กด `Export JSON` เพื่อเอาข้อมูลออก
-
-## โครงสร้างหลัก
-
-```text
-src/
-  App.tsx
-  styles.css
-  types.ts
-  data/defaultFloorPlan.ts
-  components/
-    FloorPlanEditor.tsx
-    InspectorPanel.tsx
-    ThreePreview.tsx
+```bash
+npm run preview
 ```
 
-## สิ่งที่ยังไม่ได้ทำ
+## Quick Usage
 
-- วาง floor plan ลงบนแผนที่จริงด้วย georeference / control points
-- รองรับ shape ที่ไม่ใช่สี่เหลี่ยม
-- import JSON กลับเข้าระบบ
-- save project ถาวร
-- snapping, measurement, undo/redo
-- label และ metadata ที่ลึกกว่านี้
+1. Click `Upload floor plan`
+2. Choose `Draw booth` or `Draw walkway`
+3. Drag on the canvas to create shapes
+4. Use `Place door` to add route points on booth edges
+5. Select an object to edit it in `Inspector`
+6. Review the result in `3D Preview`
+7. Click `Export JSON` to save the layout data
 
-## ทิศทางรอบถัดไป
+## Notes
 
-ถ้าจะต่อจากจุดนี้ แนะนำลำดับดังนี้:
+- `Auto draw booths` has been removed.
+- `Load preset` has been removed.
+- The workflow is now fully manual except for route snapping and route planning.
 
-1. เพิ่ม `save/load project JSON`
-2. เพิ่ม `undo/redo`
-3. เพิ่ม `snap to grid`
-4. เพิ่ม `polygon drawing`
-5. ค่อยทำ `place floor plan on real map`
+## Future Improvements
+
+- Import JSON back into the editor
+- Save/load project state
+- Undo/redo
+- Better snapping and measurement tools
+- Support for non-rectangular booth shapes
+- Better mobile editing ergonomics

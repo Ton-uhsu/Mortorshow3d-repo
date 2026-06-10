@@ -1,8 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  DEFAULT_CSV_ASSET,
-  DEFAULT_PDF_ASSET,
-} from "../constants/editor";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_CSV_ASSET } from "../constants/editor";
 import { defaultFloorPlanImage, defaultFloorPlanSize } from "../data/defaultFloorPlan";
 import { loadBoothCatalog } from "../lib/boothCatalog";
 import { buildRouteDemo } from "../lib/demoProject";
@@ -12,12 +9,12 @@ import {
   applyCatalogEntryToBooth,
   createBoothFromDraft,
   createDoorFromPlacement,
-  createWalkwayFromDraft,
+  createWalkwayFromPoints,
   duplicateBoothObject,
   patchBoothWithinBounds,
   patchWalkwayWithinBounds,
+  repositionDoorForBooth,
 } from "../lib/mapObjects";
-import { buildSuggestedBoothsFromPdf, type PdfSource } from "../lib/pdfAutoDraw";
 import { planDoorRoute } from "../lib/routePlanner";
 import type {
   BoothCatalogEntry,
@@ -25,15 +22,12 @@ import type {
   DoorObject,
   FloorPlanSize,
   RectDraft,
+  RoutePoint,
   SelectedMapObject,
   ToolMode,
   WalkwayObject,
 } from "../types";
 import { useEditorShortcuts } from "./useEditorShortcuts";
-
-function getAutoDrawSelection(booths: BoothObject[]): SelectedMapObject {
-  return booths[0] ? { type: "booth", id: booths[0].id } : null;
-}
 
 export function useFloorPlanProject() {
   const [booths, setBooths] = useState<BoothObject[]>([]);
@@ -48,13 +42,14 @@ export function useFloorPlanProject() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedObject, setSelectedObject] = useState<SelectedMapObject>(null);
   const [toolMode, setToolMode] = useState<ToolMode>("select");
+  const [floorPlanOpacity, setFloorPlanOpacity] = useState(1);
   const [gridVisible, setGridVisible] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
-  const [autoDrawEnabled, setAutoDrawEnabled] = useState(false);
-  const [currentPdfSource, setCurrentPdfSource] = useState<PdfSource>(null);
+  const [currentPdfSource, setCurrentPdfSource] = useState<string | Uint8Array | null>(null);
   const [copiedBooth, setCopiedBooth] = useState<BoothObject | null>(null);
   const [fromDoorId, setFromDoorId] = useState<string | null>(null);
   const [toDoorId, setToDoorId] = useState<string | null>(null);
+  const previousBoothsRef = useRef<BoothObject[]>(booths);
 
   const selectedBooth = useMemo(
     () => booths.find((booth) => booth.id === selectedId) ?? null,
@@ -109,13 +104,42 @@ export function useFloorPlanProject() {
     setSelectedObject((current) => (current?.type === "booth" ? current : null));
   };
 
-  const applySuggestedBooths = (nextBooths: BoothObject[], status: string) => {
-    setBooths(nextBooths);
-    clearNavigationObjects();
-    selectMapObject(getAutoDrawSelection(nextBooths));
-    setToolMode("select");
-    setFloorPlanStatus(status);
-  };
+  useLayoutEffect(() => {
+    const previousBooths = previousBoothsRef.current;
+    previousBoothsRef.current = booths;
+
+    const changedBoothPairs = booths.flatMap((booth) => {
+      const previousBooth = previousBooths.find((item) => item.id === booth.id);
+
+      if (
+        !previousBooth ||
+        (previousBooth.x === booth.x &&
+          previousBooth.y === booth.y &&
+          previousBooth.width === booth.width &&
+          previousBooth.depth === booth.depth)
+      ) {
+        return [];
+      }
+
+      return [{ previousBooth, booth }];
+    });
+
+    if (changedBoothPairs.length === 0) {
+      return;
+    }
+
+    setDoors((current) =>
+      current.map((door) => {
+        const changedBooth = changedBoothPairs.find(
+          ({ booth }) => booth.id === door.boothId,
+        );
+
+        return changedBooth
+          ? repositionDoorForBooth(door, changedBooth.previousBooth, changedBooth.booth)
+          : door;
+      }),
+    );
+  }, [booths]);
 
   useEffect(() => {
     const doorIds = new Set(doors.map((door) => door.id));
@@ -194,42 +218,6 @@ export function useFloorPlanProject() {
     setFloorPlanStatus("Loaded route demo with booths, doors, and walkway turns");
   };
 
-  const loadPresetProject = async () => {
-    setCatalogStatus("Reloading catalog...");
-    setFloorPlanStatus("Loading preset...");
-    setFloorName("THAI Construction Manual");
-    setCurrentPdfSource(DEFAULT_PDF_ASSET);
-
-    try {
-      const catalog = await loadBoothCatalog(DEFAULT_CSV_ASSET);
-      const renderedFloorPlan = await renderPdfFloorPlan(DEFAULT_PDF_ASSET);
-
-      setCatalogEntries(catalog);
-      setCatalogStatus(`Loaded ${catalog.length} booth records`);
-      setFloorPlanImage(renderedFloorPlan.image);
-      setFloorPlanSize(renderedFloorPlan.size);
-
-      if (autoDrawEnabled) {
-        const suggestedBooths = await buildSuggestedBoothsFromPdf(DEFAULT_PDF_ASSET, catalog);
-        applySuggestedBooths(
-          suggestedBooths,
-          `Preset loaded + auto-drew ${suggestedBooths.length} booths`,
-        );
-        return;
-      }
-
-      setBooths([]);
-      clearNavigationObjects();
-      selectMapObject(null);
-      setFloorPlanStatus("Preset loaded. Auto draw is off");
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to load preset assets";
-      setCatalogStatus(message);
-      setFloorPlanStatus(message);
-    }
-  };
-
   const addBooth = (rect: RectDraft) => {
     const booth = createBoothFromDraft(rect, booths.length + 1);
 
@@ -238,8 +226,8 @@ export function useFloorPlanProject() {
     setToolMode("select");
   };
 
-  const addWalkway = (rect: RectDraft) => {
-    const walkway = createWalkwayFromDraft(rect, walkways.length + 1);
+  const addWalkway = (points: RoutePoint[]) => {
+    const walkway = createWalkwayFromPoints(points, walkways.length + 1);
 
     setWalkways((current) => [...current, walkway]);
     selectMapObject({ type: "walkway", id: walkway.id });
@@ -325,19 +313,6 @@ export function useFloorPlanProject() {
     selectedObject,
   });
 
-  const autoDrawCurrentPdf = async (source: PdfSource = currentPdfSource) => {
-    if (!source) {
-      setFloorPlanStatus("Auto draw works only when the current floor plan came from a PDF");
-      return;
-    }
-
-    const suggestedBooths = await buildSuggestedBoothsFromPdf(source, catalogEntries);
-    applySuggestedBooths(
-      suggestedBooths,
-      `Auto-drew ${suggestedBooths.length} booths from PDF labels`,
-    );
-  };
-
   const handleUpload = async (file: File) => {
     const isPdf =
       file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
@@ -353,20 +328,10 @@ export function useFloorPlanProject() {
       setFloorPlanSize(rendered.size);
       setFloorName(file.name.replace(/\.[^.]+$/, ""));
 
-      if (autoDrawEnabled) {
-        const detectSource = new Uint8Array(rawBuffer.slice(0));
-        const suggestedBooths = await buildSuggestedBoothsFromPdf(detectSource, catalogEntries);
-        applySuggestedBooths(
-          suggestedBooths,
-          `Custom PDF loaded + auto-drew ${suggestedBooths.length} booths`,
-        );
-        return;
-      }
-
       setBooths([]);
       clearNavigationObjects();
       selectMapObject(null);
-      setFloorPlanStatus("Custom PDF loaded. Auto draw is off");
+      setFloorPlanStatus("Custom PDF loaded");
       return;
     }
 
@@ -434,8 +399,6 @@ export function useFloorPlanProject() {
     addDoor,
     addWalkway,
     assignCatalogEntry,
-    autoDrawCurrentPdf,
-    autoDrawEnabled,
     booths,
     catalogEntries,
     catalogStatus,
@@ -448,12 +411,12 @@ export function useFloorPlanProject() {
     exportProject,
     floorName,
     floorPlanImage,
+    floorPlanOpacity,
     floorPlanSize,
     floorPlanStatus,
     fromDoorId,
     gridVisible,
     handleUpload,
-    loadPresetProject,
     loadRouteDemo,
     resetProject,
     routePath,
@@ -463,8 +426,8 @@ export function useFloorPlanProject() {
     selectedId,
     selectedObject,
     selectMapObject,
-    setAutoDrawEnabled,
     setFromDoorId,
+    setFloorPlanOpacity,
     setGridVisible,
     setShowLabels,
     setToDoorId,

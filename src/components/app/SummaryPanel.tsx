@@ -52,8 +52,8 @@ export function SummaryPanel({
       <div className={`${ui.softCard} mt-4`}>
         <strong className="mb-2 block text-white">Next step</strong>
         <p className={ui.sectionText}>
-          The auto-draw is tailored to this PDF layout. Next we can refine the
-          left-side mini booths and add snapping for exact booth edges.
+          Next we can refine booth placement tools, improve snapping, and make
+          resizing booths even easier.
         </p>
       </div>
     </section>

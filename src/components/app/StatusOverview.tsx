@@ -1,13 +1,13 @@
 import { ui } from "../../lib/ui";
 
 interface StatusOverviewProps {
-  autoDrawEnabled: boolean;
   boothCount: number;
   catalogStatus: string;
   doorCount: number;
+  floorPlanOpacity: number;
   floorPlanStatus: string;
   gridVisible: boolean;
-  onAutoDrawChange: (enabled: boolean) => void;
+  onFloorPlanOpacityChange: (opacity: number) => void;
   onGridVisibleChange: (visible: boolean) => void;
   onShowLabelsChange: (show: boolean) => void;
   showLabels: boolean;
@@ -15,13 +15,13 @@ interface StatusOverviewProps {
 }
 
 export function StatusOverview({
-  autoDrawEnabled,
   boothCount,
   catalogStatus,
   doorCount,
+  floorPlanOpacity,
   floorPlanStatus,
   gridVisible,
-  onAutoDrawChange,
+  onFloorPlanOpacityChange,
   onGridVisibleChange,
   onShowLabelsChange,
   showLabels,
@@ -50,15 +50,6 @@ export function StatusOverview({
       <div className={ui.switchRow}>
         <label className="inline-flex items-center gap-2">
           <input
-            checked={autoDrawEnabled}
-            className="h-4 w-4 rounded border-white/20 bg-slate-900/60 text-sky-400 focus:ring-sky-400/40"
-            onChange={(event) => onAutoDrawChange(event.target.checked)}
-            type="checkbox"
-          />
-          Auto draw PDF
-        </label>
-        <label className="inline-flex items-center gap-2">
-          <input
             checked={gridVisible}
             className="h-4 w-4 rounded border-white/20 bg-slate-900/60 text-sky-400 focus:ring-sky-400/40"
             onChange={(event) => onGridVisibleChange(event.target.checked)}
@@ -75,6 +66,23 @@ export function StatusOverview({
           />
           Labels
         </label>
+      </div>
+      <div className={ui.softCard}>
+        <div className="flex items-center justify-between gap-3">
+          <span className={ui.statsLabel}>Background opacity</span>
+          <strong className="text-sm font-semibold text-white">
+            {Math.round(floorPlanOpacity * 100)}%
+          </strong>
+        </div>
+        <input
+          className="mt-3 h-2 w-full accent-sky-400"
+          max="1"
+          min="0"
+          onChange={(event) => onFloorPlanOpacityChange(Number(event.target.value))}
+          step="0.05"
+          type="range"
+          value={floorPlanOpacity}
+        />
       </div>
     </section>
   );

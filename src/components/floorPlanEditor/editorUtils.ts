@@ -1,9 +1,10 @@
-import type { BoothObject, DoorEdge, RectDraft } from "../../types";
+import type { BoothObject, DoorEdge, RectDraft, RoutePoint } from "../../types";
 import { clamp } from "../../lib/geometry";
 
 export interface DragState {
   id: string;
   type: "booth" | "walkway";
+  originPoints?: RoutePoint[];
   originX: number;
   originY: number;
   startX: number;
@@ -17,6 +18,12 @@ export interface ResizeState {
   originDepth: number;
   startX: number;
   startY: number;
+}
+
+export interface PointDragState {
+  originPoints: RoutePoint[];
+  pointIndex: number;
+  walkwayId: string;
 }
 
 export const MIN_SIZE = 0.02;
@@ -45,6 +52,12 @@ export function normalizeDraft(draft: RectDraft): RectDraft {
     width: clamp(width, MIN_SIZE, 1),
     depth: clamp(depth, MIN_SIZE, 1),
   };
+}
+
+export function getOrthogonalPoint(anchor: RoutePoint, point: RoutePoint): RoutePoint {
+  return Math.abs(point.x - anchor.x) >= Math.abs(point.y - anchor.y)
+    ? { x: point.x, y: anchor.y }
+    : { x: anchor.x, y: point.y };
 }
 
 export function getNearestBoothEdge(

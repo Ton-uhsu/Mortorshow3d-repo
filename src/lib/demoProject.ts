@@ -43,35 +43,24 @@ export function buildRouteDemo() {
   const walkways: WalkwayObject[] = [
     {
       id: createWalkwayId(),
-      name: "walkway A",
-      x: 0.39,
-      y: 0.49,
-      width: 0.07,
-      depth: 0.2,
+      name: "main walkway",
+      points: [
+        { x: 0.42, y: 0.5 },
+        { x: 0.42, y: 0.66 },
+        { x: 0.73, y: 0.66 },
+        { x: 0.73, y: 0.5 },
+      ],
+      width: 0.024,
     },
     {
       id: createWalkwayId(),
-      name: "walkway B",
-      x: 0.39,
-      y: 0.62,
-      width: 0.38,
-      depth: 0.08,
-    },
-    {
-      id: createWalkwayId(),
-      name: "walkway C",
-      x: 0.7,
-      y: 0.49,
-      width: 0.07,
-      depth: 0.2,
-    },
-    {
-      id: createWalkwayId(),
-      name: "walkway D",
-      x: 0.76,
-      y: 0.62,
-      width: 0.09,
-      depth: 0.06,
+      name: "branch walkway",
+      points: [
+        { x: 0.73, y: 0.66 },
+        { x: 0.84, y: 0.66 },
+        { x: 0.84, y: 0.73 },
+      ],
+      width: 0.02,
     },
   ];
   const doorA: DoorObject = {

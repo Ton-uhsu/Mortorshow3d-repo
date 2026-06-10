@@ -21,9 +21,11 @@ export interface BoothObject {
   rotation: number;
 }
 
-export interface WalkwayObject extends RectDraft {
+export interface WalkwayObject {
   id: string;
   name: string;
+  points: RoutePoint[];
+  width: number;
 }
 
 export type DoorEdge = "top" | "right" | "bottom" | "left";
