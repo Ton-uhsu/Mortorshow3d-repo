@@ -16,6 +16,15 @@ const ThreePreview = lazy(async () => {
 export default function App() {
   const uploadRef = useRef<HTMLInputElement | null>(null);
   const project = useFloorPlanProject();
+  const routePanelProps = {
+    doors: project.doors,
+    fromDoorId: project.fromDoorId,
+    onFromDoorChange: project.setFromDoorId,
+    onToDoorChange: project.setToDoorId,
+    routeDistance: project.routePath?.distance ?? null,
+    routeStatus: project.routeStatus,
+    toDoorId: project.toDoorId,
+  };
 
   return (
     <div className="min-h-screen p-3 md:p-4">
@@ -49,15 +58,7 @@ export default function App() {
             walkwayCount={project.walkways.length}
           />
 
-          <RoutePanel
-            doors={project.doors}
-            fromDoorId={project.fromDoorId}
-            onFromDoorChange={project.setFromDoorId}
-            onToDoorChange={project.setToDoorId}
-            routeDistance={project.routePath?.distance ?? null}
-            routeStatus={project.routeStatus}
-            toDoorId={project.toDoorId}
-          />
+          <RoutePanel {...routePanelProps} className="hidden xl:block" />
 
           <InspectorPanel
             booth={project.selectedBooth}
@@ -108,6 +109,8 @@ export default function App() {
             toolMode={project.toolMode}
             walkways={project.walkways}
           />
+
+          <RoutePanel {...routePanelProps} className="xl:hidden" />
 
           <Suspense
             fallback={

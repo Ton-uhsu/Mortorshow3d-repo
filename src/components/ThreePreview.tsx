@@ -42,10 +42,9 @@ interface PreviewMetrics {
 
 const MAX_PLANE_DIMENSION = 14;
 const ISO_POLAR_ANGLE = Math.acos(1 / Math.sqrt(3));
-const DOOR_CUTOUT_HEIGHT_RATIO = 0.82;
-const DOOR_CUTOUT_MIN_HEIGHT = 0.13;
-const DOOR_CUTOUT_OFFSET = 0.012;
-const DOOR_CUTOUT_WIDTH = 0.46;
+const DOOR_MARKER_LENGTH = 0.36;
+const DOOR_MARKER_SURFACE_OFFSET = 0.003;
+const DOOR_MARKER_HEIGHT = 0.28;
 const TOP_LOGO_PIXELS = 1024;
 
 function getLogoTextureUrl(logoUrl: string) {
@@ -67,6 +66,40 @@ function configureTopTexture(texture: Texture) {
   texture.wrapS = ClampToEdgeWrapping;
   texture.wrapT = ClampToEdgeWrapping;
   texture.needsUpdate = true;
+}
+
+function createDoorLabelTexture() {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  canvas.width = 512;
+  canvas.height = 160;
+
+  if (!context) {
+    const texture = new CanvasTexture(canvas);
+    configureTopTexture(texture);
+    return texture;
+  }
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "rgba(8, 47, 73, 0.92)";
+  context.beginPath();
+  context.roundRect(18, 34, canvas.width - 36, 92, 44);
+  context.fill();
+  context.strokeStyle = "rgba(255, 255, 255, 0.96)";
+  context.lineWidth = 10;
+  context.beginPath();
+  context.roundRect(18, 34, canvas.width - 36, 92, 44);
+  context.stroke();
+  context.fillStyle = "#ffffff";
+  context.font = "900 58px Arial, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText("Entry", canvas.width / 2, canvas.height / 2 + 3);
+
+  const texture = new CanvasTexture(canvas);
+  configureTopTexture(texture);
+  return texture;
 }
 
 function formatBoothCode(booth: BoothObject) {
@@ -525,7 +558,74 @@ function WalkwayMeshes({
   );
 }
 
-function DoorCutouts({
+function getDoorMarkerRotation(door: DoorObject) {
+  if (door.edge === "top") {
+    return Math.PI;
+  }
+
+  if (door.edge === "bottom") {
+    return 0;
+  }
+
+  if (door.edge === "left") {
+    return -Math.PI / 2;
+  }
+
+  if (door.edge === "right") {
+    return Math.PI / 2;
+  }
+
+  return 0;
+}
+
+function getDoorMarkerPosition(
+  door: DoorObject,
+  booth: BoothObject,
+  planeDepth: number,
+  planeWidth: number,
+  markerHeight: number,
+) {
+  const xRatio =
+    booth.width > 0 ? Math.min(1, Math.max(0, (door.x - booth.x) / booth.width)) : 0.5;
+  const yRatio =
+    booth.depth > 0 ? Math.min(1, Math.max(0, (door.y - booth.y) / booth.depth)) : 0.5;
+  const y = Math.min(
+    booth.extrudeHeight - markerHeight / 2 - 0.018,
+    Math.max(markerHeight / 2 + 0.018, booth.extrudeHeight * 0.45),
+  );
+
+  if (door.edge === "top") {
+    return {
+      x: (booth.x + booth.width * xRatio - 0.5) * planeWidth,
+      y,
+      z: (booth.y - 0.5) * planeDepth - DOOR_MARKER_SURFACE_OFFSET,
+    };
+  }
+
+  if (door.edge === "bottom") {
+    return {
+      x: (booth.x + booth.width * xRatio - 0.5) * planeWidth,
+      y,
+      z: (booth.y + booth.depth - 0.5) * planeDepth + DOOR_MARKER_SURFACE_OFFSET,
+    };
+  }
+
+  if (door.edge === "left") {
+    return {
+      x: (booth.x - 0.5) * planeWidth - DOOR_MARKER_SURFACE_OFFSET,
+      y,
+      z: (booth.y + booth.depth * yRatio - 0.5) * planeDepth,
+    };
+  }
+
+  return {
+    x: (booth.x + booth.width - 0.5) * planeWidth + DOOR_MARKER_SURFACE_OFFSET,
+    y,
+    z: (booth.y + booth.depth * yRatio - 0.5) * planeDepth,
+  };
+}
+
+function DoorMarkers({
   booths,
   doors,
   planeDepth,
@@ -536,48 +636,58 @@ function DoorCutouts({
   planeDepth: number;
   planeWidth: number;
 }) {
+  const labelTexture = useMemo(() => createDoorLabelTexture(), []);
+
+  useEffect(() => {
+    return () => labelTexture.dispose();
+  }, [labelTexture]);
+
   return (
     <>
       {doors.map((door) => {
         const booth = booths.find((item) => item.id === door.boothId);
-        const boothHeight = booth?.extrudeHeight ?? 0.2;
-        const cutoutHeight = Math.max(
-          DOOR_CUTOUT_MIN_HEIGHT,
-          boothHeight * DOOR_CUTOUT_HEIGHT_RATIO,
+        if (!booth) {
+          return null;
+        }
+
+        const markerHeight = Math.min(
+          DOOR_MARKER_HEIGHT,
+          Math.max(0.16, booth.extrudeHeight * 0.62),
         );
-        const x = (door.x - 0.5) * planeWidth;
-        const z = (door.y - 0.5) * planeDepth;
-        const isHorizontal = isDoorHorizontal(door);
-        const offsetX =
-          door.edge === "left"
-            ? -DOOR_CUTOUT_OFFSET
-            : door.edge === "right"
-              ? DOOR_CUTOUT_OFFSET
-              : 0;
-        const offsetZ =
-          door.edge === "top"
-            ? -DOOR_CUTOUT_OFFSET
-            : door.edge === "bottom"
-              ? DOOR_CUTOUT_OFFSET
-              : 0;
+        const markerPosition = getDoorMarkerPosition(
+          door,
+          booth,
+          planeDepth,
+          planeWidth,
+          markerHeight,
+        );
+        const edgeLength = isDoorHorizontal(door)
+          ? booth.width * planeWidth
+          : booth.depth * planeDepth;
+        const markerLength = Math.min(
+          DOOR_MARKER_LENGTH,
+          Math.max(0.26, edgeLength * 0.72),
+        );
 
         return (
-          <mesh
+          <group
             key={door.id}
-            position={[x + offsetX, cutoutHeight / 2 + 0.012, z + offsetZ]}
-            renderOrder={30}
-            rotation-y={isHorizontal ? 0 : Math.PI / 2}
+            position={[markerPosition.x, markerPosition.y, markerPosition.z]}
+            rotation-y={getDoorMarkerRotation(door)}
           >
-            <planeGeometry args={[DOOR_CUTOUT_WIDTH, cutoutHeight]} />
-            <meshStandardMaterial
-              color="#ffffff"
-              depthTest={false}
-              emissive="#ffffff"
-              emissiveIntensity={0.08}
-              roughness={0.3}
-              side={DoubleSide}
-            />
-          </mesh>
+            <mesh
+              renderOrder={32}
+            >
+              <planeGeometry args={[markerLength, markerHeight]} />
+              <meshBasicMaterial
+                depthTest={false}
+                map={labelTexture}
+                side={DoubleSide}
+                toneMapped={false}
+                transparent
+              />
+            </mesh>
+          </group>
         );
       })}
     </>
@@ -622,6 +732,21 @@ function RouteLine({
   planeWidth: number;
   routePath: RoutePath | null;
 }) {
+  const pulseLineRef = useRef<any>(null);
+
+  useFrame(({ clock }) => {
+    const material = pulseLineRef.current?.material;
+
+    if (!material) {
+      return;
+    }
+
+    const beat = (Math.sin(clock.elapsedTime * Math.PI * 3.4) + 1) / 2;
+    material.opacity = 0.18 + beat * 0.5;
+    material.linewidth = 7 + beat * 7;
+    material.needsUpdate = true;
+  });
+
   if (!routePath) {
     return null;
   }
@@ -635,11 +760,29 @@ function RouteLine({
   return (
     <>
       <Line
-        color="#06b6d4"
+        color="#ffffff"
         depthTest={false}
-        lineWidth={5}
+        lineWidth={3}
+        opacity={0.78}
         points={points}
+        renderOrder={19}
+        transparent
+      />
+      <Line
+        color="#38bdf8"
+        depthTest={false}
+        lineWidth={3}
+        points={points}
+        ref={pulseLineRef}
         renderOrder={20}
+        transparent
+      />
+      <Line
+        color="#22d3ee"
+        depthTest={false}
+        lineWidth={3}
+        points={points}
+        renderOrder={21}
       />
       {routePath.points.map((point, index) => {
         if (!isRouteEndpoint(index, routePath.points.length)) {
@@ -730,7 +873,7 @@ function PreviewSceneCanvas({
         planeWidth={plane.width}
         routePath={routePath}
       />
-      <DoorCutouts
+      <DoorMarkers
         booths={booths}
         doors={doors}
         planeDepth={plane.depth}

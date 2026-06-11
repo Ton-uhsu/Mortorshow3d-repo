@@ -267,6 +267,11 @@ export function EditorCanvas({
             vectorEffect="non-scaling-stroke"
           />
           <polyline
+            className="route-line-pulse"
+            points={routePoints}
+            vectorEffect="non-scaling-stroke"
+          />
+          <polyline
             className="route-line"
             points={routePoints}
             vectorEffect="non-scaling-stroke"

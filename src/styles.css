@@ -101,7 +101,58 @@
 
   .route-line {
     stroke: #1d9bf0;
-    stroke-width: 6;
-    filter: drop-shadow(0 2px 4px rgb(15 23 42 / 0.32));
+    stroke-width: 7;
+    filter:
+      drop-shadow(0 0 3px rgb(255 255 255 / 0.85))
+      drop-shadow(0 0 8px rgb(34 211 238 / 0.72));
+    animation: route-heartbeat 1.18s ease-in-out infinite;
+  }
+
+  .route-line-pulse {
+    fill: none;
+    stroke: hsl(198, 100%, 65%);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 12;
+    opacity: 0;
+    vector-effect: non-scaling-stroke;
+    animation: route-heartbeat-glow 1.18s ease-in-out infinite;
+  }
+
+  @keyframes route-heartbeat {
+    0%,
+    100% {
+      stroke: #1d9bf0;
+      stroke-width: 6;
+    }
+
+    16% {
+      stroke: #22d3ee;
+      stroke-width: 5;
+    }
+
+    30% {
+      stroke: #82c2fd;
+      stroke-width: 6;
+    }
+
+    48% {
+      stroke: #38bdf8;
+      stroke-width: 7;
+    }
+  }
+
+  @keyframes route-heartbeat-glow {
+    0%,
+    100% {
+      opacity: 0;
+      stroke-width: 10;
+    }
+
+    18%,
+    48% {
+      opacity: 0.38;
+      stroke-width: 16;
+    }
   }
 }

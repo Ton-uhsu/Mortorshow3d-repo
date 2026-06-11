@@ -2,6 +2,7 @@ import type { DoorObject } from "../../types";
 import { ui } from "../../lib/ui";
 
 interface RoutePanelProps {
+  className?: string;
   doors: DoorObject[];
   fromDoorId: string | null;
   onFromDoorChange: (id: string | null) => void;
@@ -12,6 +13,7 @@ interface RoutePanelProps {
 }
 
 export function RoutePanel({
+  className = "",
   doors,
   fromDoorId,
   onFromDoorChange,
@@ -21,7 +23,7 @@ export function RoutePanel({
   toDoorId,
 }: RoutePanelProps) {
   return (
-    <section className={ui.panel}>
+    <section className={`${ui.panel} ${className}`}>
       <header className={ui.panelHeader}>
         <div>
           <p className={ui.eyebrow}>Directions</p>
@@ -33,7 +35,7 @@ export function RoutePanel({
         <label className={ui.field}>
           <span className={ui.fieldHint}>From door</span>
           <select
-            className={ui.input}
+            className={`${ui.input} min-h-14 touch-manipulation py-4 text-base font-semibold`}
             onChange={(event) => onFromDoorChange(event.target.value || null)}
             value={fromDoorId ?? ""}
           >
@@ -49,7 +51,7 @@ export function RoutePanel({
         <label className={ui.field}>
           <span className={ui.fieldHint}>To door</span>
           <select
-            className={ui.input}
+            className={`${ui.input} min-h-14 touch-manipulation py-4 text-base font-semibold`}
             onChange={(event) => onToDoorChange(event.target.value || null)}
             value={toDoorId ?? ""}
           >
