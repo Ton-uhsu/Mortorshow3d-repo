@@ -2,7 +2,7 @@ import type { BoothCategory } from "../types";
 
 export const CATEGORY_COLORS: Record<BoothCategory, string> = {
   standard: "#60a5fa",
-  premium: "#f59e0b",
+  premium: "#499ca2",
   food: "#ef4444",
   stage: "#8b5cf6",
   service: "#14b8a6",

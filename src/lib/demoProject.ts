@@ -149,8 +149,6 @@ export function buildAZonePdfDemo(
     rectFromPdfPreview("A7", 1023, 444, 76, 114),
     rectFromPdfPreview("A5", 1100, 444, 64, 114),
     rectFromPdfPreview("A3", 1165, 444, 42, 114),
-    rectFromPdfPreview("A1", 1210, 444, 34, 59),
-    rectFromPdfPreview("A1/1", 1210, 506, 34, 52),
   ];
   const booths = boothDrafts.map((draft) => createAZoneBooth(draft, catalogEntries));
   const startBooth = booths.find((booth) => booth.boothCode === "A22") ?? booths[0];
@@ -182,16 +180,6 @@ export function buildAZonePdfDemo(
     createWalkway("A zone middle connector", [
       { x: middleRoadX, y: upperRoadY },
       { x: middleRoadX, y: lowerRoadY },
-    ], 0.011),
-    createWalkway("A22 door link", [
-      { x: startDoor.x, y: startDoor.y },
-      { x: startDoor.x, y: centerRoadY },
-      { x: leftRoadX, y: centerRoadY },
-    ], 0.011),
-    createWalkway("A1 door link", [
-      { x: endDoor.x, y: endDoor.y },
-      { x: endDoor.x, y: centerRoadY },
-      { x: rightRoadX, y: centerRoadY },
     ], 0.011),
   ];
 

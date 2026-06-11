@@ -2,14 +2,19 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { Edges, Grid, Html, Line, OrbitControls } from "@react-three/drei";
 import {
+  BufferGeometry,
   CanvasTexture,
   ClampToEdgeWrapping,
   DoubleSide,
+  Float32BufferAttribute,
   LinearFilter,
   MathUtils,
+  RepeatWrapping,
   SRGBColorSpace,
   TextureLoader,
 } from "three";
+import { RoutePanel } from "./app/RoutePanel";
+import type { RoutePanelProps } from "./app/RoutePanel";
 import type { Camera, Texture } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { ui } from "../lib/ui";
@@ -28,6 +33,7 @@ interface ThreePreviewProps {
   floorPlanOpacity: number;
   floorPlanSize: FloorPlanSize;
   routePath: RoutePath | null;
+  routePanel: Omit<RoutePanelProps, "className" | "variant">;
   selectedId: string | null;
   walkways: WalkwayObject[];
 }
@@ -45,6 +51,10 @@ const ISO_POLAR_ANGLE = Math.acos(1 / Math.sqrt(3));
 const DOOR_MARKER_LENGTH = 0.36;
 const DOOR_MARKER_SURFACE_OFFSET = 0.003;
 const DOOR_MARKER_HEIGHT = 0.28;
+const ROUTE_RIBBON_Y = 0.2;
+const ROUTE_RIBBON_OUTER_WIDTH = 0.14;
+const ROUTE_RIBBON_INNER_WIDTH = 0.082;
+const ROUTE_RIBBON_FLOW_WIDTH = 0.12;
 const TOP_LOGO_PIXELS = 1024;
 
 function getLogoTextureUrl(logoUrl: string) {
@@ -99,6 +109,52 @@ function createDoorLabelTexture() {
 
   const texture = new CanvasTexture(canvas);
   configureTopTexture(texture);
+  return texture;
+}
+
+function createRouteFlowTexture() {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  canvas.width = 512;
+  canvas.height = 96;
+
+  if (!context) {
+    const texture = new CanvasTexture(canvas);
+    texture.wrapS = RepeatWrapping;
+    texture.wrapT = ClampToEdgeWrapping;
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+
+  const dashX = 34;
+  const dashY = 28;
+  const dashWidth = 172;
+  const dashHeight = 40;
+  const radius = 20;
+
+  context.shadowBlur = 18;
+  context.shadowColor = "rgba(125, 211, 252, 0.8)";
+  context.fillStyle = "rgba(224, 242, 254, 0.9)";
+  context.beginPath();
+  context.roundRect(dashX, dashY, dashWidth, dashHeight, radius);
+  context.fill();
+
+  context.shadowBlur = 0;
+  context.fillStyle = "rgba(56, 189, 248, 0.52)";
+  context.beginPath();
+  context.roundRect(dashX + 10, dashY + 10, dashWidth - 20, dashHeight - 20, 10);
+  context.fill();
+
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  texture.minFilter = LinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
+  texture.needsUpdate = true;
   return texture;
 }
 
@@ -223,10 +279,6 @@ function createBoothTopTexture(booth: BoothObject, image?: HTMLImageElement) {
 
 function isDoorHorizontal(door: DoorObject) {
   return door.edge === "top" || door.edge === "bottom";
-}
-
-function isRouteEndpoint(index: number, pointsLength: number) {
-  return index === 0 || index === pointsLength - 1;
 }
 
 function getPlaneDimensions(size: FloorPlanSize) {
@@ -540,7 +592,7 @@ function WalkwayMeshes({
         return (
           <Line
             color="#10b981"
-            depthTest={false}
+            depthTest
             key={walkway.id}
             lineWidth={Math.max(walkway.width * 180, 3.5)}
             points={walkway.points.map((point) => [
@@ -680,7 +732,7 @@ function DoorMarkers({
             >
               <planeGeometry args={[markerLength, markerHeight]} />
               <meshBasicMaterial
-                depthTest={false}
+                depthTest
                 map={labelTexture}
                 side={DoubleSide}
                 toneMapped={false}
@@ -723,85 +775,291 @@ function EndFlagIcon() {
   );
 }
 
+interface RouteRibbonSegment {
+  angle: number;
+  center: readonly [number, number, number];
+  end: readonly [number, number, number];
+  length: number;
+  start: readonly [number, number, number];
+}
+
+function createRouteRibbonGeometry(
+  segment: RouteRibbonSegment,
+  width: number,
+  yOffset: number,
+) {
+  const dx = segment.end[0] - segment.start[0];
+  const dz = segment.end[2] - segment.start[2];
+  const length = Math.max(Math.hypot(dx, dz), 0.0001);
+  const normalX = (-dz / length) * (width / 2);
+  const normalZ = (dx / length) * (width / 2);
+  const geometry = new BufferGeometry();
+
+  geometry.setAttribute(
+    "position",
+    new Float32BufferAttribute(
+      [
+        segment.start[0] + normalX,
+        yOffset,
+        segment.start[2] + normalZ,
+        segment.end[0] + normalX,
+        yOffset,
+        segment.end[2] + normalZ,
+        segment.end[0] - normalX,
+        yOffset,
+        segment.end[2] - normalZ,
+        segment.start[0] - normalX,
+        yOffset,
+        segment.start[2] - normalZ,
+      ],
+      3,
+    ),
+  );
+  geometry.setAttribute("uv", new Float32BufferAttribute([0, 1, 1, 1, 1, 0, 0, 0], 2));
+  geometry.setIndex([0, 1, 2, 0, 2, 3]);
+  geometry.computeVertexNormals();
+
+  return geometry;
+}
+
+function RouteRibbonStrip({
+  color,
+  opacity = 1,
+  renderOrder,
+  segment,
+  width,
+  yOffset,
+}: {
+  color: string;
+  opacity?: number;
+  renderOrder: number;
+  segment: RouteRibbonSegment;
+  width: number;
+  yOffset: number;
+}) {
+  const geometry = useMemo(
+    () => createRouteRibbonGeometry(segment, width, yOffset),
+    [segment, width, yOffset],
+  );
+
+  useEffect(() => {
+    return () => geometry.dispose();
+  }, [geometry]);
+
+  return (
+    <mesh geometry={geometry} renderOrder={renderOrder}>
+      <meshBasicMaterial
+        color={color}
+        depthTest
+        opacity={opacity}
+        polygonOffset
+        polygonOffsetFactor={-renderOrder}
+        polygonOffsetUnits={-renderOrder}
+        transparent={opacity < 1}
+      />
+    </mesh>
+  );
+}
+
+function RouteRibbonFlow({
+  flowTexture,
+  index,
+  segment,
+}: {
+  flowTexture: Texture;
+  index: number;
+  segment: RouteRibbonSegment;
+}) {
+  const texture = useMemo(() => {
+    const clone = flowTexture.clone();
+    clone.wrapS = RepeatWrapping;
+    clone.wrapT = ClampToEdgeWrapping;
+    clone.repeat.set(Math.max(segment.length * 2.2, 1), 1);
+    clone.offset.set(index * 0.17, 0);
+    clone.needsUpdate = true;
+    return clone;
+  }, [flowTexture, index, segment.length]);
+  const geometry = useMemo(
+    () => createRouteRibbonGeometry(segment, ROUTE_RIBBON_FLOW_WIDTH, ROUTE_RIBBON_Y + 0.014),
+    [segment],
+  );
+
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+      texture.dispose();
+    };
+  }, [geometry, texture]);
+
+  useFrame(({ clock }) => {
+    texture.offset.x = -(clock.elapsedTime * 0.48 + index * 0.17);
+  });
+
+  return (
+    <mesh geometry={geometry} renderOrder={23}>
+      <meshBasicMaterial
+        depthTest
+        map={texture}
+        opacity={0.95}
+        polygonOffset
+        polygonOffsetFactor={-23}
+        polygonOffsetUnits={-23}
+        toneMapped={false}
+        transparent
+      />
+    </mesh>
+  );
+}
+
 function RouteLine({
+  booths,
+  doors,
   planeDepth,
   planeWidth,
   routePath,
 }: {
+  booths: BoothObject[];
+  doors: DoorObject[];
   planeDepth: number;
   planeWidth: number;
   routePath: RoutePath | null;
 }) {
-  const pulseLineRef = useRef<any>(null);
-
-  useFrame(({ clock }) => {
-    const material = pulseLineRef.current?.material;
-
-    if (!material) {
-      return;
+  const flowTexture = useMemo(() => createRouteFlowTexture(), []);
+  const routeMetrics = useMemo(() => {
+    if (!routePath) {
+      return { points: [], segments: [] };
     }
 
-    const beat = (Math.sin(clock.elapsedTime * Math.PI * 3.4) + 1) / 2;
-    material.opacity = 0.18 + beat * 0.5;
-    material.linewidth = 7 + beat * 7;
-    material.needsUpdate = true;
-  });
+    const points = routePath.points.map((point) => [
+      (point.x - 0.5) * planeWidth,
+      ROUTE_RIBBON_Y,
+      (point.y - 0.5) * planeDepth,
+    ] as const);
+    const segments: RouteRibbonSegment[] = [];
+
+    for (let index = 1; index < points.length; index += 1) {
+      const start = points[index - 1];
+      const end = points[index];
+      const length = Math.hypot(end[0] - start[0], end[2] - start[2]);
+
+      if (length <= 0.0001) {
+        continue;
+      }
+
+      segments.push({
+        angle: Math.atan2(end[2] - start[2], end[0] - start[0]),
+        center: [(start[0] + end[0]) / 2, ROUTE_RIBBON_Y, (start[2] + end[2]) / 2],
+        end,
+        length,
+        start,
+      });
+    }
+
+    return { points, segments };
+  }, [planeDepth, planeWidth, routePath]);
+
+  useEffect(() => {
+    return () => flowTexture.dispose();
+  }, [flowTexture]);
 
   if (!routePath) {
     return null;
   }
 
-  const points = routePath.points.map((point) => [
-    (point.x - 0.5) * planeWidth,
-    0.18,
-    (point.y - 0.5) * planeDepth,
-  ] as const);
+  const endpointMarkers = [routePath.points[0], routePath.points.at(-1)!].map((point, index) => {
+    const door = doors.find(
+      (item) => Math.hypot(item.x - point.x, item.y - point.y) <= 0.00001,
+    );
+    const booth = door ? booths.find((item) => item.id === door.boothId) : null;
+
+    if (!door || !booth) {
+      return {
+        isStart: index === 0,
+        key: `${point.x}-${point.y}-${index}`,
+        position: [(point.x - 0.5) * planeWidth, 0.2, (point.y - 0.5) * planeDepth] as const,
+      };
+    }
+
+    return {
+      isStart: index === 0,
+      key: `${door.id}-${index}`,
+      position: [
+        (booth.x + booth.width / 2 - 0.5) * planeWidth,
+        booth.extrudeHeight + 0.08,
+        (booth.y + booth.depth / 2 - 0.5) * planeDepth,
+      ] as const,
+    };
+  });
 
   return (
     <>
-      <Line
-        color="#ffffff"
-        depthTest={false}
-        lineWidth={3}
-        opacity={0.78}
-        points={points}
-        renderOrder={19}
-        transparent
-      />
-      <Line
-        color="#38bdf8"
-        depthTest={false}
-        lineWidth={3}
-        points={points}
-        ref={pulseLineRef}
-        renderOrder={20}
-        transparent
-      />
-      <Line
-        color="#22d3ee"
-        depthTest={false}
-        lineWidth={3}
-        points={points}
-        renderOrder={21}
-      />
-      {routePath.points.map((point, index) => {
-        if (!isRouteEndpoint(index, routePath.points.length)) {
-          return null;
-        }
-
+      {routeMetrics.segments.map((segment, index) => (
+        <RouteRibbonStrip
+          color="#ffffff"
+          key={`route-outer-${index}`}
+          opacity={0.88}
+          renderOrder={19}
+          segment={segment}
+          width={ROUTE_RIBBON_OUTER_WIDTH}
+          yOffset={ROUTE_RIBBON_Y + 0.006}
+        />
+      ))}
+      {routeMetrics.points.map((point, index) => (
+        <mesh
+          key={`route-outer-cap-${index}`}
+          position={[point[0], ROUTE_RIBBON_Y + 0.007, point[2]]}
+          renderOrder={19}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <circleGeometry args={[ROUTE_RIBBON_OUTER_WIDTH / 2, 32]} />
+          <meshBasicMaterial color="#ffffff" depthTest opacity={0.88} transparent />
+        </mesh>
+      ))}
+      {routeMetrics.segments.map((segment, index) => (
+        <RouteRibbonStrip
+          color="#0284c7"
+          key={`route-inner-${index}`}
+          opacity={0.9}
+          renderOrder={20}
+          segment={segment}
+          width={ROUTE_RIBBON_INNER_WIDTH}
+          yOffset={ROUTE_RIBBON_Y + 0.01}
+        />
+      ))}
+      {routeMetrics.points.map((point, index) => (
+        <mesh
+          key={`route-inner-cap-${index}`}
+          position={[point[0], ROUTE_RIBBON_Y + 0.011, point[2]]}
+          renderOrder={20}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <circleGeometry args={[ROUTE_RIBBON_INNER_WIDTH / 2, 32]} />
+          <meshBasicMaterial color="#0284c7" depthTest opacity={0.9} transparent />
+        </mesh>
+      ))}
+      {routeMetrics.segments.map((segment, index) => (
+        <RouteRibbonFlow
+          flowTexture={flowTexture}
+          index={index}
+          key={`route-flow-${index}`}
+          segment={segment}
+        />
+      ))}
+      {endpointMarkers.map((marker) => {
         return (
           <Html
             center
             distanceFactor={8}
-            key={`${point.x}-${point.y}-${index}`}
-            position={[(point.x - 0.5) * planeWidth, 0.2, (point.y - 0.5) * planeDepth]}
+            key={marker.key}
+            occlude={false}
+            position={marker.position}
             style={{
               filter: "drop-shadow(0 8px 10px rgba(15, 23, 42, 0.35))",
               pointerEvents: "none",
               transform: "translateY(-18px)",
             }}
           >
-            {index === 0 ? <StartMarkerIcon /> : <EndFlagIcon />}
+            {marker.isStart ? <StartMarkerIcon /> : <EndFlagIcon />}
           </Html>
         );
       })}
@@ -822,7 +1080,7 @@ function PreviewSceneCanvas({
   routePath,
   selectedId,
   walkways,
-}: ThreePreviewProps & {
+}: Omit<ThreePreviewProps, "routePanel"> & {
   isoLocked: boolean;
   isoViewVersion: number;
   onMetrics?: (metrics: PreviewMetrics) => void;
@@ -869,6 +1127,8 @@ function PreviewSceneCanvas({
       />
       <TopBoothCaps booths={booths} planeDepth={plane.depth} planeWidth={plane.width} />
       <RouteLine
+        booths={booths}
+        doors={doors}
         planeDepth={plane.depth}
         planeWidth={plane.width}
         routePath={routePath}
@@ -903,6 +1163,7 @@ export function ThreePreview({
   floorPlanOpacity,
   floorPlanSize,
   routePath,
+  routePanel,
   selectedId,
   walkways,
 }: ThreePreviewProps) {
@@ -1012,7 +1273,12 @@ export function ThreePreview({
         </div>
       </header>
 
-      <div className="mt-3 min-h-[420px] flex-1 overflow-hidden rounded-[24px] border border-white/10">
+      <div className="relative mt-3 min-h-[420px] flex-1 overflow-hidden rounded-[24px] border border-white/10">
+        <RoutePanel
+          {...routePanel}
+          className="absolute top-3 right-3 left-3 z-10 sm:left-4 sm:right-auto sm:w-[min(440px,calc(100%-2rem))]"
+          variant="overlay"
+        />
         {largePreviewOpen ? null : <PreviewSceneCanvas {...sceneProps} />}
       </div>
 
@@ -1063,6 +1329,11 @@ export function ThreePreview({
               {...sceneProps}
               onMetrics={showDebugMetrics ? setMetrics : undefined}
               performanceMode
+            />
+            <RoutePanel
+              {...routePanel}
+              className="absolute top-3 right-3 left-3 z-10 sm:left-4 sm:right-auto sm:w-[min(460px,calc(100%-2rem))]"
+              variant="overlay"
             />
             {showDebugMetrics && metrics ? (
               <div className="pointer-events-none absolute left-3 bottom-3 rounded-2xl border border-white/12 bg-slate-950/82 px-3 py-2 font-mono text-[0.68rem] leading-5 text-cyan-100 shadow-2xl">

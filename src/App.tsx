@@ -1,6 +1,5 @@
 import { Suspense, lazy, useRef } from "react";
 import { EditorHeader } from "./components/app/EditorHeader";
-import { RoutePanel } from "./components/app/RoutePanel";
 import { StatusOverview } from "./components/app/StatusOverview";
 import { SummaryPanel } from "./components/app/SummaryPanel";
 import { FloorPlanEditor } from "./components/FloorPlanEditor";
@@ -58,8 +57,6 @@ export default function App() {
             walkwayCount={project.walkways.length}
           />
 
-          <RoutePanel {...routePanelProps} className="hidden xl:block" />
-
           <InspectorPanel
             booth={project.selectedBooth}
             catalogEntries={project.catalogEntries}
@@ -110,8 +107,6 @@ export default function App() {
             walkways={project.walkways}
           />
 
-          <RoutePanel {...routePanelProps} className="xl:hidden" />
-
           <Suspense
             fallback={
               <section className={`${ui.panel} flex min-h-[420px] flex-col lg:min-h-[calc(100vh-8.5rem)]`}>
@@ -138,6 +133,7 @@ export default function App() {
               floorPlanOpacity={project.floorPlanOpacity}
               floorPlanSize={project.floorPlanSize}
               routePath={project.routePath}
+              routePanel={routePanelProps}
               selectedId={project.selectedId}
               walkways={project.walkways}
             />
