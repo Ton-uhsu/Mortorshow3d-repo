@@ -1156,6 +1156,44 @@ function PreviewSceneCanvas({
   );
 }
 
+function RouteControlsOverlay({
+  className = "",
+  routePanel,
+}: {
+  className?: string;
+  routePanel: Omit<RoutePanelProps, "className" | "variant">;
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (open) {
+    return (
+      <RoutePanel
+        {...routePanel}
+        className={`absolute right-3 bottom-3 left-3 z-10 max-h-[min(68%,360px)] overflow-y-auto sm:top-3 sm:right-auto sm:bottom-auto sm:left-4 sm:w-[min(420px,calc(100%-2rem))] ${className}`}
+        onClose={() => setOpen(false)}
+        variant="overlay"
+      />
+    );
+  }
+
+  return (
+    <button
+      className={`absolute top-3 left-3 z-10 rounded-2xl border border-cyan-200/30 bg-slate-950/86 px-4 py-3 text-left shadow-2xl shadow-slate-950/35 backdrop-blur-xl ${className}`}
+      onClick={() => setOpen(true)}
+      type="button"
+    >
+      <span className="block text-[0.68rem] font-bold uppercase tracking-[0.18em] text-amber-200">
+        Directions
+      </span>
+      <span className="mt-1 block text-sm font-bold text-white">
+        {routePanel.routeDistance !== null
+          ? `${(routePanel.routeDistance * 100).toFixed(1)} units`
+          : "Route preview"}
+      </span>
+    </button>
+  );
+}
+
 export function ThreePreview({
   booths,
   doors,
@@ -1274,11 +1312,7 @@ export function ThreePreview({
       </header>
 
       <div className="relative mt-3 min-h-[420px] flex-1 overflow-hidden rounded-[24px] border border-white/10">
-        <RoutePanel
-          {...routePanel}
-          className="absolute top-3 right-3 left-3 z-10 sm:left-4 sm:right-auto sm:w-[min(440px,calc(100%-2rem))]"
-          variant="overlay"
-        />
+        <RouteControlsOverlay routePanel={routePanel} />
         {largePreviewOpen ? null : <PreviewSceneCanvas {...sceneProps} />}
       </div>
 
@@ -1330,11 +1364,7 @@ export function ThreePreview({
               onMetrics={showDebugMetrics ? setMetrics : undefined}
               performanceMode
             />
-            <RoutePanel
-              {...routePanel}
-              className="absolute top-3 right-3 left-3 z-10 sm:left-4 sm:right-auto sm:w-[min(460px,calc(100%-2rem))]"
-              variant="overlay"
-            />
+            <RouteControlsOverlay routePanel={routePanel} />
             {showDebugMetrics && metrics ? (
               <div className="pointer-events-none absolute left-3 bottom-3 rounded-2xl border border-white/12 bg-slate-950/82 px-3 py-2 font-mono text-[0.68rem] leading-5 text-cyan-100 shadow-2xl">
                 <div>fps: {metrics.fps}</div>

@@ -7,6 +7,7 @@ export interface RoutePanelProps {
   fromDoorId: string | null;
   onFromDoorChange: (id: string | null) => void;
   onToDoorChange: (id: string | null) => void;
+  onClose?: () => void;
   routeDistance: number | null;
   routeStatus: string;
   toDoorId: string | null;
@@ -17,6 +18,7 @@ export function RoutePanel({
   className = "",
   doors,
   fromDoorId,
+  onClose,
   onFromDoorChange,
   onToDoorChange,
   routeDistance,
@@ -26,10 +28,10 @@ export function RoutePanel({
 }: RoutePanelProps) {
   const isOverlay = variant === "overlay";
   const shellClass = isOverlay
-    ? "rounded-2xl border border-white/14 bg-slate-950/82 p-3 shadow-2xl shadow-slate-950/35 backdrop-blur-xl"
+    ? "rounded-2xl border border-white/14 bg-slate-950/88 p-3 shadow-2xl shadow-slate-950/35 backdrop-blur-xl"
     : ui.panel;
   const headerClass = isOverlay ? "flex items-start justify-between gap-3" : ui.panelHeader;
-  const titleClass = isOverlay ? "text-base font-semibold tracking-tight text-white" : ui.panelTitle;
+  const titleClass = isOverlay ? "text-sm font-semibold tracking-tight text-white" : ui.panelTitle;
   const gridClass = isOverlay
     ? "mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2"
     : `${ui.fieldGrid} grid-cols-1 md:grid-cols-2`;
@@ -50,6 +52,15 @@ export function RoutePanel({
           <p className={ui.eyebrow}>Directions</p>
           <h2 className={titleClass}>Route preview</h2>
         </div>
+        {isOverlay && onClose ? (
+          <button
+            className="rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-xs font-bold text-white"
+            onClick={onClose}
+            type="button"
+          >
+            Hide
+          </button>
+        ) : null}
       </header>
 
       <div className={gridClass}>
