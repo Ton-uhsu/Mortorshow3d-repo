@@ -233,20 +233,15 @@ export function useFloorPlanProject() {
     try {
       setIsAZoneDemoLoading(true);
       setFloorPlanStatus("Loading A zone PDF demo...");
-      const availableCatalogEntries =
-        catalogEntries.length > 0
-          ? catalogEntries
-          : await loadBoothCatalog(DEFAULT_CSV_ASSET);
+      const availableCatalogEntries = await loadBoothCatalog(DEFAULT_CSV_ASSET);
       const demo = buildAZonePdfDemo(
         A_ZONE_FLOOR_PLAN_IMAGE_PATH,
         A_ZONE_FLOOR_PLAN_SIZE,
         availableCatalogEntries,
       );
 
-      if (catalogEntries.length === 0) {
-        setCatalogEntries(availableCatalogEntries);
-        setCatalogStatus(`Loaded ${availableCatalogEntries.length} booth records`);
-      }
+      setCatalogEntries(availableCatalogEntries);
+      setCatalogStatus(`Loaded ${availableCatalogEntries.length} booth records`);
 
       setFloorName(demo.floorName);
       setFloorPlanImage(demo.floorPlanImage);

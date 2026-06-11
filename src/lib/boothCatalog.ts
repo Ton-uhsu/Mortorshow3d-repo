@@ -19,7 +19,20 @@ function normalizeLogoUrl(value: string) {
     .map((line) => line.trim())
     .find((line) => line && line !== "-");
 
-  return candidate ?? null;
+  if (!candidate) {
+    return null;
+  }
+
+  if (candidate.includes("bims47.motorshow.in.th/wp-content/uploads/")) {
+    const basePath = import.meta.env.BASE_URL.endsWith("/")
+      ? import.meta.env.BASE_URL
+      : `${import.meta.env.BASE_URL}/`;
+    const fileName = encodeURIComponent(candidate).replace(/%/g, "_");
+
+    return `${basePath}logos/${fileName}`;
+  }
+
+  return candidate;
 }
 
 function isBoothCode(value: string) {
@@ -27,7 +40,7 @@ function isBoothCode(value: string) {
 }
 
 export async function loadBoothCatalog(csvUrl: string): Promise<BoothCatalogEntry[]> {
-  const response = await fetch(csvUrl);
+  const response = await fetch(csvUrl, { cache: "no-store" });
 
   if (!response.ok) {
     throw new Error(`Unable to load booth catalog: ${response.status}`);

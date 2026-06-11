@@ -13,6 +13,17 @@ function createId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+const FOOTPRINT_HEIGHT_SCALE = 5;
+const FOOTPRINT_HEIGHT_MIN = 0.22;
+const FOOTPRINT_HEIGHT_MAX = 0.9;
+
+export function getBoothFootprintHeight(width: number, depth: number) {
+  const footprint = Math.max(width * depth, 0);
+  const height = Math.sqrt(footprint) * FOOTPRINT_HEIGHT_SCALE;
+
+  return Number(clamp(height, FOOTPRINT_HEIGHT_MIN, FOOTPRINT_HEIGHT_MAX).toFixed(2));
+}
+
 export function createBoothId() {
   return createId("booth");
 }
@@ -48,7 +59,7 @@ export function createBoothFromDraft(
     y: rect.y,
     width: rect.width,
     depth: rect.depth,
-    extrudeHeight: 0.2,
+    extrudeHeight: getBoothFootprintHeight(rect.width, rect.depth),
     rotation: 0,
   };
 }
@@ -114,14 +125,22 @@ export function patchBoothWithinBounds(
   const nextY = patch.y ?? booth.y;
   const nextWidth = patch.width ?? booth.width;
   const nextDepth = patch.depth ?? booth.depth;
+  const clampedWidth = clamp(nextWidth, 0.02, 1 - nextX);
+  const clampedDepth = clamp(nextDepth, 0.02, 1 - nextY);
+  const nextExtrudeHeight =
+    patch.extrudeHeight ??
+    (patch.width !== undefined || patch.depth !== undefined
+      ? getBoothFootprintHeight(clampedWidth, clampedDepth)
+      : booth.extrudeHeight);
 
   return {
     ...booth,
     ...patch,
     x: clamp(nextX, 0, 1 - nextWidth),
     y: clamp(nextY, 0, 1 - nextDepth),
-    width: clamp(nextWidth, 0.02, 1 - nextX),
-    depth: clamp(nextDepth, 0.02, 1 - nextY),
+    width: clampedWidth,
+    depth: clampedDepth,
+    extrudeHeight: nextExtrudeHeight,
   };
 }
 

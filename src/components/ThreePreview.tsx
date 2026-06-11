@@ -1,8 +1,16 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { Edges, Grid, Html, Line, OrbitControls } from "@react-three/drei";
-import { DoubleSide, MathUtils, SRGBColorSpace, TextureLoader } from "three";
-import type { Camera } from "three";
+import {
+  CanvasTexture,
+  ClampToEdgeWrapping,
+  DoubleSide,
+  LinearFilter,
+  MathUtils,
+  SRGBColorSpace,
+  TextureLoader,
+} from "three";
+import type { Camera, Texture } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { ui } from "../lib/ui";
 import type {
@@ -38,6 +46,147 @@ const DOOR_CUTOUT_HEIGHT_RATIO = 0.82;
 const DOOR_CUTOUT_MIN_HEIGHT = 0.13;
 const DOOR_CUTOUT_OFFSET = 0.012;
 const DOOR_CUTOUT_WIDTH = 0.46;
+const TOP_LOGO_PIXELS = 1024;
+
+function getLogoTextureUrl(logoUrl: string) {
+  if (!/^https?:\/\//i.test(logoUrl)) {
+    return logoUrl;
+  }
+
+  const basePath = import.meta.env.BASE_URL.endsWith("/")
+    ? import.meta.env.BASE_URL
+    : `${import.meta.env.BASE_URL}/`;
+
+  return `${basePath}logo-proxy?url=${encodeURIComponent(logoUrl)}`;
+}
+
+function configureTopTexture(texture: Texture) {
+  texture.colorSpace = SRGBColorSpace;
+  texture.minFilter = LinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.wrapS = ClampToEdgeWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
+  texture.needsUpdate = true;
+}
+
+function formatBoothCode(booth: BoothObject) {
+  return (booth.boothCode || booth.name || "BOOTH")
+    .replace(/,/g, ", ")
+    .toUpperCase();
+}
+
+function drawBoothHeader(
+  context: CanvasRenderingContext2D,
+  booth: BoothObject,
+  canvasSize: number,
+) {
+  const headerHeight = Math.round(canvasSize * 0.13);
+  const code = formatBoothCode(booth);
+
+  context.fillStyle = "#5cbec0";
+  context.fillRect(0, 0, canvasSize, headerHeight);
+  context.fillStyle = "#073b4c";
+  context.fillRect(0, headerHeight - 8, canvasSize, 8);
+  context.fillStyle = "#ffffff";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.font = `900 ${Math.round(headerHeight * 0.62)}px Arial, sans-serif`;
+  context.fillText(code, canvasSize / 2, headerHeight / 2 + 2);
+
+  return headerHeight;
+}
+
+function drawBoothLogoImage(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  canvasSize: number,
+  headerHeight: number,
+) {
+  const bodyTop = headerHeight;
+  const bodyHeight = canvasSize - headerHeight;
+  const paddingX = canvasSize * 0.08;
+  const paddingY = bodyHeight * 0.08;
+  const availableWidth = canvasSize - paddingX * 2;
+  const availableHeight = bodyHeight - paddingY * 2;
+  const imageAspectRatio = image.naturalWidth / Math.max(image.naturalHeight, 1);
+  const availableAspectRatio = availableWidth / Math.max(availableHeight, 1);
+  const drawWidth =
+    imageAspectRatio > availableAspectRatio
+      ? availableWidth
+      : availableHeight * imageAspectRatio;
+  const drawHeight =
+    imageAspectRatio > availableAspectRatio
+      ? availableWidth / imageAspectRatio
+      : availableHeight;
+  const drawX = (canvasSize - drawWidth) / 2;
+  const drawY = bodyTop + (bodyHeight - drawHeight) / 2;
+
+  context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+}
+
+function drawBoothFallbackText(
+  context: CanvasRenderingContext2D,
+  booth: BoothObject,
+  canvasSize: number,
+  headerHeight: number,
+) {
+  const brand = (booth.name || booth.boothCode || "BOOTH").toUpperCase();
+  const bodyTop = headerHeight;
+  const bodyHeight = canvasSize - headerHeight;
+
+  context.fillStyle = "#111827";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+
+  const words = brand.split(/\s+/).filter(Boolean);
+  const lines = words.length > 2 ? [words.slice(0, -1).join(" "), words.at(-1) ?? ""] : [brand];
+  const maxLineWidth = canvasSize * 0.8;
+  let fontSize = Math.round(Math.min(168, canvasSize / Math.max(brand.length * 0.28, 5)));
+
+  do {
+    context.font = `900 ${fontSize}px Arial, sans-serif`;
+    fontSize -= 4;
+  } while (
+    fontSize > 44 &&
+    lines.some((line) => context.measureText(line).width > maxLineWidth)
+  );
+
+  const lineHeight = fontSize * 1.14;
+  const startY = bodyTop + bodyHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
+
+  lines.forEach((line, index) => {
+    context.fillText(line, canvasSize / 2, startY + index * lineHeight);
+  });
+}
+
+function createBoothTopTexture(booth: BoothObject, image?: HTMLImageElement) {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  canvas.width = TOP_LOGO_PIXELS;
+  canvas.height = TOP_LOGO_PIXELS;
+
+  if (!context) {
+    const texture = new CanvasTexture(canvas);
+    configureTopTexture(texture);
+    return texture;
+  }
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  const headerHeight = drawBoothHeader(context, booth, canvas.width);
+
+  if (image) {
+    drawBoothLogoImage(context, image, canvas.width, headerHeight);
+  } else {
+    drawBoothFallbackText(context, booth, canvas.width, headerHeight);
+  }
+
+  const texture = new CanvasTexture(canvas);
+  configureTopTexture(texture);
+  return texture;
+}
 
 function isDoorHorizontal(door: DoorObject) {
   return door.edge === "top" || door.edge === "bottom";
@@ -184,90 +333,97 @@ function FloorTexture({
   );
 }
 
-function FloorBacking({
-  planeDepth,
-  planeWidth,
-}: {
-  planeDepth: number;
-  planeWidth: number;
-}) {
-  return (
-    <mesh position={[0, -0.026, 0]} rotation-x={-Math.PI / 2}>
-      <planeGeometry args={[planeWidth, planeDepth]} />
-      <meshBasicMaterial color="#d9d4c8" side={DoubleSide} toneMapped={false} />
-    </mesh>
+function useBoothTopTexture(booth: BoothObject) {
+  const logoUrl = booth.logoUrl?.trim();
+  const [logoTexture, setLogoTexture] = useState<Texture | null>(null);
+  const fallbackTexture = useMemo(
+    () => createBoothTopTexture(booth),
+    [booth.boothCode, booth.name],
   );
+
+  useEffect(() => {
+    return () => fallbackTexture.dispose();
+  }, [fallbackTexture]);
+
+  useEffect(() => {
+    if (!logoUrl) {
+      setLogoTexture(null);
+      return;
+    }
+
+    let active = true;
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => {
+      if (!active) {
+        return;
+      }
+
+      const texture = createBoothTopTexture(booth, image);
+      setLogoTexture((currentTexture) => {
+        currentTexture?.dispose();
+        return texture;
+      });
+    };
+    image.onerror = () => {
+      if (active) {
+        setLogoTexture((currentTexture) => {
+          currentTexture?.dispose();
+          return null;
+        });
+      }
+    };
+    image.src = getLogoTextureUrl(logoUrl);
+
+    return () => {
+      active = false;
+      setLogoTexture((currentTexture) => {
+        currentTexture?.dispose();
+        return null;
+      });
+    };
+  }, [booth.boothCode, booth.name, logoUrl]);
+
+  return logoTexture ?? fallbackTexture;
 }
 
-function TopBoothLabel({
+function TopBoothCap({
   booth,
   depth,
   width,
+  x,
+  z,
 }: {
   booth: BoothObject;
   depth: number;
   width: number;
+  x: number;
+  z: number;
 }) {
-  const [logoFailed, setLogoFailed] = useState(false);
-  const code = booth.boothCode || booth.name || "Booth";
-  const brand = booth.name || booth.boothCode || "Booth";
-  const logoUrl = booth.logoUrl?.trim();
-  const showLogo = Boolean(logoUrl && !logoFailed);
-  const shortestSide = Math.min(width, depth);
-  const labelWidth = Math.max(width * 104, 28);
-  const labelHeight = Math.max(depth * 104, 22);
-  const fontSize = Math.max(11, Math.min(24, shortestSide * 18));
+  const texture = useBoothTopTexture(booth);
 
   return (
-    <div
-      style={{
-        alignItems: "center",
-        background: showLogo ? "rgba(255, 255, 255, 0.82)" : "rgba(255, 255, 255, 0.9)",
-        borderRadius: 3,
-        color: "#111827",
-        display: "grid",
-        justifyItems: "center",
-        height: labelHeight,
-        overflow: "hidden",
-        padding: showLogo ? "4px" : "5px",
-        pointerEvents: "none",
-        width: labelWidth,
-      }}
+    <group
+      position={[x, booth.extrudeHeight + 0.006, z]}
+      rotation-y={MathUtils.degToRad(booth.rotation)}
     >
-      {showLogo ? (
-        <img
-          alt={`${brand} logo`}
-          draggable="false"
-          onError={() => setLogoFailed(true)}
-          src={logoUrl}
-          style={{
-            display: "block",
-            height: "100%",
-            maxHeight: "100%",
-            maxWidth: "100%",
-            objectFit: "contain",
-            width: "100%",
-          }}
+      <mesh renderOrder={10} rotation-x={-Math.PI / 2}>
+        <planeGeometry args={[width, depth]} />
+        <meshBasicMaterial
+          depthTest
+          map={texture}
+          polygonOffset
+          polygonOffsetFactor={-1}
+          polygonOffsetUnits={-1}
+          side={DoubleSide}
+          toneMapped={false}
         />
-      ) : (
-        <div
-          style={{
-            fontSize,
-            fontWeight: 900,
-            lineHeight: 1,
-            maxWidth: labelWidth - 8,
-            textAlign: "center",
-            textTransform: "uppercase",
-          }}
-        >
-          {shortestSide < 0.44 ? code : brand}
-        </div>
-      )}
-    </div>
+      </mesh>
+    </group>
   );
 }
 
-function TopBoothLabels({
+function TopBoothCaps({
   booths,
   planeDepth,
   planeWidth,
@@ -285,26 +441,14 @@ function TopBoothLabels({
         const z = (booth.y + booth.depth / 2 - 0.5) * planeDepth;
 
         return (
-          <Html
-            center
-            distanceFactor={1}
-            occlude={false}
-            transform
-            key={`${booth.id}-label`}
-            position={[x, booth.extrudeHeight + 0.012, z]}
-            rotation={[
-              -Math.PI / 2,
-              0,
-              -MathUtils.degToRad(booth.rotation),
-            ]}
-            style={{
-              pointerEvents: "none",
-              userSelect: "none",
-            }}
-            zIndexRange={[40, 0]}
-          >
-            <TopBoothLabel booth={booth} depth={depth} width={width} />
-          </Html>
+          <TopBoothCap
+            booth={booth}
+            depth={depth}
+            key={`${booth.id}-top-cap`}
+            width={width}
+            x={x}
+            z={z}
+          />
         );
       })}
     </>
@@ -527,7 +671,6 @@ function PreviewSceneCanvas({
   doors,
   floorPlanImage,
   floorPlanOpacity,
-  gridSize,
   isoLocked,
   isoViewVersion,
   onMetrics,
@@ -535,16 +678,13 @@ function PreviewSceneCanvas({
   plane,
   routePath,
   selectedId,
-  shadowPlaneSize,
   walkways,
 }: ThreePreviewProps & {
-  gridSize: number;
   isoLocked: boolean;
   isoViewVersion: number;
   onMetrics?: (metrics: PreviewMetrics) => void;
   performanceMode?: boolean;
   plane: { depth: number; width: number };
-  shadowPlaneSize: number;
 }) {
   return (
     <Canvas
@@ -565,7 +705,6 @@ function PreviewSceneCanvas({
         shadow-mapSize-height={performanceMode ? 512 : 2048}
         shadow-mapSize-width={performanceMode ? 512 : 2048}
       />
-      <FloorBacking planeDepth={plane.depth} planeWidth={plane.width} />
       <Suspense fallback={null}>
         <FloorTexture
           image={floorPlanImage}
@@ -574,12 +713,6 @@ function PreviewSceneCanvas({
           planeWidth={plane.width}
         />
       </Suspense>
-      {!performanceMode ? (
-        <mesh receiveShadow position={[0, -0.02, 0]} rotation-x={-Math.PI / 2}>
-          <planeGeometry args={[shadowPlaneSize, shadowPlaneSize]} />
-          <shadowMaterial opacity={0.25} />
-        </mesh>
-      ) : null}
       <WalkwayMeshes
         planeDepth={plane.depth}
         planeWidth={plane.width}
@@ -591,7 +724,7 @@ function PreviewSceneCanvas({
         planeWidth={plane.width}
         selectedId={selectedId}
       />
-      <TopBoothLabels booths={booths} planeDepth={plane.depth} planeWidth={plane.width} />
+      <TopBoothCaps booths={booths} planeDepth={plane.depth} planeWidth={plane.width} />
       <RouteLine
         planeDepth={plane.depth}
         planeWidth={plane.width}
@@ -603,30 +736,17 @@ function PreviewSceneCanvas({
         planeDepth={plane.depth}
         planeWidth={plane.width}
       />
-      {!performanceMode ? (
-        <Grid
-          args={[gridSize, gridSize]}
-          cellColor="#25364a"
-          cellSize={0.5}
-          fadeDistance={22}
-          fadeStrength={1}
-          infiniteGrid
-          position={[0, 0.01, 0]}
-          sectionColor="#35516d"
-          sectionSize={2}
-        />
-      ) : (
-        <Grid
-          args={[plane.width, plane.depth]}
-          cellColor="#94a3b8"
-          cellSize={0.5}
-          fadeDistance={Math.max(plane.width, plane.depth) + 2}
-          fadeStrength={0.45}
-          position={[0, 0.012, 0]}
-          sectionColor="#64748b"
-          sectionSize={2}
-        />
-      )}
+      <Grid
+        args={[Math.max(plane.width, plane.depth) + 8, Math.max(plane.width, plane.depth) + 8]}
+        cellColor="#25364a"
+        cellSize={0.5}
+        fadeDistance={22}
+        fadeStrength={1}
+        infiniteGrid
+        position={[0, 0.01, 0]}
+        sectionColor="#35516d"
+        sectionSize={2}
+      />
       {onMetrics ? <PerformanceProbe onMetrics={onMetrics} /> : null}
       <CameraControls isoLocked={isoLocked} isoViewVersion={isoViewVersion} />
     </Canvas>
@@ -644,7 +764,6 @@ export function ThreePreview({
   walkways,
 }: ThreePreviewProps) {
   const [isoLocked, setIsoLocked] = useState(false);
-  const [isoViewVersion, setIsoViewVersion] = useState(0);
   const [largePreviewOpen, setLargePreviewOpen] = useState(false);
   const [metrics, setMetrics] = useState<PreviewMetrics | null>(null);
   const showDebugMetrics = useMemo(
@@ -661,21 +780,17 @@ export function ThreePreview({
     };
   }, [booths]);
   const plane = useMemo(() => getPlaneDimensions(floorPlanSize), [floorPlanSize]);
-  const gridSize = Math.max(plane.width, plane.depth) + 8;
-  const shadowPlaneSize = Math.max(plane.width, plane.depth) + 6;
   const sceneProps = {
     booths,
     doors,
     floorPlanImage,
     floorPlanOpacity,
     floorPlanSize,
-    gridSize,
     isoLocked,
-    isoViewVersion,
+    isoViewVersion: 0,
     plane,
     routePath,
     selectedId,
-    shadowPlaneSize,
     walkways,
   };
 
@@ -737,13 +852,6 @@ export function ThreePreview({
             Large preview
           </button>
           <button
-            className="rounded-2xl border border-sky-300/30 bg-sky-400/14 px-3 py-2 text-sm font-semibold text-sky-50 transition hover:-translate-y-px hover:bg-sky-400/22"
-            onClick={() => setIsoViewVersion((version) => version + 1)}
-            type="button"
-          >
-            Iso
-          </button>
-          <button
             className={`rounded-2xl border px-3 py-2 text-sm font-semibold transition hover:-translate-y-px ${
               isoLocked
                 ? "border-amber-300/55 bg-amber-300/20 text-amber-50"
@@ -787,13 +895,6 @@ export function ThreePreview({
               <h2 className="text-lg font-semibold text-white sm:text-2xl">Extruded scene</h2>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <button
-                className="rounded-2xl border border-sky-300/30 bg-sky-400/14 px-3 py-2 text-sm font-semibold text-sky-50"
-                onClick={() => setIsoViewVersion((version) => version + 1)}
-                type="button"
-              >
-                Iso
-              </button>
               <button
                 className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${
                   isoLocked

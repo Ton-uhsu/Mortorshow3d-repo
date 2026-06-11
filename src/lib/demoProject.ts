@@ -7,7 +7,12 @@ import type {
   FloorPlanSize,
   WalkwayObject,
 } from "../types";
-import { createBoothId, createDoorId, createWalkwayId } from "./mapObjects";
+import {
+  createBoothId,
+  createDoorId,
+  createWalkwayId,
+  getBoothFootprintHeight,
+} from "./mapObjects";
 
 const PDF_PREVIEW_WIDTH = 1255;
 const PDF_PREVIEW_HEIGHT = 893;
@@ -70,7 +75,7 @@ function createAZoneBooth(
     y: draft.y,
     width: draft.width,
     depth: draft.depth,
-    extrudeHeight: draft.width * draft.depth > 0.006 ? 0.62 : 0.42,
+    extrudeHeight: getBoothFootprintHeight(draft.width, draft.depth),
     rotation: 0,
   };
 }
@@ -213,7 +218,7 @@ export function buildRouteDemo() {
     y: 0.3,
     width: 0.16,
     depth: 0.2,
-    extrudeHeight: 0.7,
+    extrudeHeight: getBoothFootprintHeight(0.16, 0.2),
     rotation: 0,
   };
   const demoBoothB: BoothObject = {
@@ -225,7 +230,7 @@ export function buildRouteDemo() {
     y: 0.3,
     width: 0.16,
     depth: 0.2,
-    extrudeHeight: 0.7,
+    extrudeHeight: getBoothFootprintHeight(0.16, 0.2),
     rotation: 0,
   };
   const demoBoothC: BoothObject = {
@@ -237,7 +242,7 @@ export function buildRouteDemo() {
     y: 0.57,
     width: 0.1,
     depth: 0.16,
-    extrudeHeight: 0.7,
+    extrudeHeight: getBoothFootprintHeight(0.1, 0.16),
     rotation: 0,
   };
   const walkways: WalkwayObject[] = [
