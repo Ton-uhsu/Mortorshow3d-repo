@@ -5,6 +5,7 @@ const GRID_ROWS = 54;
 const DOOR_SEARCH_RADIUS = 10;
 const OBSTACLE_PADDING_X = 0.25 / GRID_COLUMNS;
 const OBSTACLE_PADDING_Y = 0.25 / GRID_ROWS;
+const DOOR_APPROACH_OFFSET = 0.018;
 const WALKWAY_GRID_TOLERANCE = Math.max(1 / GRID_COLUMNS, 1 / GRID_ROWS) * 0.55;
 const ROUTE_POINT_EPSILON = 0.00001;
 
@@ -24,6 +25,7 @@ interface PlannerInput {
 interface WalkwaySegment {
   end: RoutePoint;
   index: number;
+  safeIndex?: number;
   start: RoutePoint;
   walkway: WalkwayObject;
 }
@@ -32,6 +34,14 @@ interface SegmentProjection {
   distance: number;
   point: RoutePoint;
   segment: WalkwaySegment;
+}
+
+interface ObstacleRect {
+  depth: number;
+  id: string;
+  width: number;
+  x: number;
+  y: number;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -45,6 +55,40 @@ function pointInsideRect(point: RoutePoint, rect: { x: number; y: number; width:
     point.y >= rect.y &&
     point.y <= rect.y + rect.depth
   );
+}
+
+function getDoorApproachPoint(door: DoorObject, booths: BoothObject[]): RoutePoint {
+  const booth = booths.find((item) => item.id === door.boothId);
+
+  if (!booth) {
+    return door;
+  }
+
+  if (door.edge === "top") {
+    return {
+      x: clamp(door.x, booth.x, booth.x + booth.width),
+      y: clamp(booth.y - DOOR_APPROACH_OFFSET, 0, 1),
+    };
+  }
+
+  if (door.edge === "bottom") {
+    return {
+      x: clamp(door.x, booth.x, booth.x + booth.width),
+      y: clamp(booth.y + booth.depth + DOOR_APPROACH_OFFSET, 0, 1),
+    };
+  }
+
+  if (door.edge === "left") {
+    return {
+      x: clamp(booth.x - DOOR_APPROACH_OFFSET, 0, 1),
+      y: clamp(door.y, booth.y, booth.y + booth.depth),
+    };
+  }
+
+  return {
+    x: clamp(booth.x + booth.width + DOOR_APPROACH_OFFSET, 0, 1),
+    y: clamp(door.y, booth.y, booth.y + booth.depth),
+  };
 }
 
 function routePointKey(point: RoutePoint) {
@@ -62,6 +106,275 @@ function getWalkwaySegments(walkways: WalkwayObject[]) {
 
       return end ? [{ end, index, start, walkway }] : [];
     }),
+  );
+}
+
+function pointAtSegmentRatio(start: RoutePoint, end: RoutePoint, ratio: number): RoutePoint {
+  return {
+    x: start.x + (end.x - start.x) * ratio,
+    y: start.y + (end.y - start.y) * ratio,
+  };
+}
+
+function getObstacleRects(booths: BoothObject[], clearanceX: number, clearanceY: number): ObstacleRect[] {
+  return booths.map((booth) => ({
+    id: booth.id,
+    x: booth.x - clearanceX,
+    y: booth.y - clearanceY,
+    width: booth.width + clearanceX * 2,
+    depth: booth.depth + clearanceY * 2,
+  }));
+}
+
+function getSegmentRectInterval(
+  start: RoutePoint,
+  end: RoutePoint,
+  rect: { x: number; y: number; width: number; depth: number },
+) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  let entry = 0;
+  let exit = 1;
+
+  const clip = (edgeDelta: number, edgeDistance: number) => {
+    if (Math.abs(edgeDelta) <= ROUTE_POINT_EPSILON) {
+      return edgeDistance >= 0;
+    }
+
+    const ratio = edgeDistance / edgeDelta;
+
+    if (edgeDelta < 0) {
+      if (ratio > exit) {
+        return false;
+      }
+
+      if (ratio > entry) {
+        entry = ratio;
+      }
+    } else {
+      if (ratio < entry) {
+        return false;
+      }
+
+      if (ratio < exit) {
+        exit = ratio;
+      }
+    }
+
+    return true;
+  };
+
+  if (
+    !clip(-dx, start.x - rect.x) ||
+    !clip(dx, rect.x + rect.width - start.x) ||
+    !clip(-dy, start.y - rect.y) ||
+    !clip(dy, rect.y + rect.depth - start.y)
+  ) {
+    return null;
+  }
+
+  if (exit < 0 || entry > 1 || exit - entry <= ROUTE_POINT_EPSILON) {
+    return null;
+  }
+
+  return {
+    end: clamp(exit, 0, 1),
+    start: clamp(entry, 0, 1),
+  };
+}
+
+function getExpandedBoothRect(booth: BoothObject, offset: number) {
+  return {
+    x: clamp(booth.x - offset, 0, 1),
+    y: clamp(booth.y - offset, 0, 1),
+    width: clamp(booth.width + offset * 2, 0, 1),
+    depth: clamp(booth.depth + offset * 2, 0, 1),
+  };
+}
+
+function projectPointToRectPerimeter(
+  point: RoutePoint,
+  rect: { x: number; y: number; width: number; depth: number },
+): RoutePoint {
+  const right = rect.x + rect.width;
+  const bottom = rect.y + rect.depth;
+  const candidates = [
+    { x: clamp(point.x, rect.x, right), y: rect.y },
+    { x: right, y: clamp(point.y, rect.y, bottom) },
+    { x: clamp(point.x, rect.x, right), y: bottom },
+    { x: rect.x, y: clamp(point.y, rect.y, bottom) },
+  ];
+
+  return candidates.reduce((best, candidate) => {
+    const bestDistance = Math.hypot(point.x - best.x, point.y - best.y);
+    const candidateDistance = Math.hypot(point.x - candidate.x, point.y - candidate.y);
+
+    return candidateDistance < bestDistance ? candidate : best;
+  });
+}
+
+function rectPerimeterDistance(
+  point: RoutePoint,
+  rect: { x: number; y: number; width: number; depth: number },
+) {
+  const right = rect.x + rect.width;
+  const bottom = rect.y + rect.depth;
+
+  if (Math.abs(point.y - rect.y) <= ROUTE_POINT_EPSILON) {
+    return clamp(point.x - rect.x, 0, rect.width);
+  }
+
+  if (Math.abs(point.x - right) <= ROUTE_POINT_EPSILON) {
+    return rect.width + clamp(point.y - rect.y, 0, rect.depth);
+  }
+
+  if (Math.abs(point.y - bottom) <= ROUTE_POINT_EPSILON) {
+    return rect.width + rect.depth + clamp(right - point.x, 0, rect.width);
+  }
+
+  return rect.width * 2 + rect.depth + clamp(bottom - point.y, 0, rect.depth);
+}
+
+function rectPointAtPerimeterDistance(
+  distance: number,
+  rect: { x: number; y: number; width: number; depth: number },
+): RoutePoint {
+  const perimeter = (rect.width + rect.depth) * 2;
+  const wrappedDistance = ((distance % perimeter) + perimeter) % perimeter;
+  const right = rect.x + rect.width;
+  const bottom = rect.y + rect.depth;
+
+  if (wrappedDistance <= rect.width) {
+    return { x: rect.x + wrappedDistance, y: rect.y };
+  }
+
+  if (wrappedDistance <= rect.width + rect.depth) {
+    return { x: right, y: rect.y + wrappedDistance - rect.width };
+  }
+
+  if (wrappedDistance <= rect.width * 2 + rect.depth) {
+    return { x: right - (wrappedDistance - rect.width - rect.depth), y: bottom };
+  }
+
+  return { x: rect.x, y: bottom - (wrappedDistance - rect.width * 2 - rect.depth) };
+}
+
+function buildPerimeterPath(
+  start: RoutePoint,
+  end: RoutePoint,
+  rect: { x: number; y: number; width: number; depth: number },
+  direction: 1 | -1,
+) {
+  const perimeter = (rect.width + rect.depth) * 2;
+  const startDistance = rectPerimeterDistance(start, rect);
+  const endDistance = rectPerimeterDistance(end, rect);
+  const travel =
+    direction === 1
+      ? (endDistance - startDistance + perimeter) % perimeter
+      : (startDistance - endDistance + perimeter) % perimeter;
+  const points = [start];
+  const corners = [0, rect.width, rect.width + rect.depth, rect.width * 2 + rect.depth];
+  const crossedCorners: Array<{ distance: number; point: RoutePoint }> = [];
+
+  for (const corner of corners) {
+    const cornerTravel =
+      direction === 1
+        ? (corner - startDistance + perimeter) % perimeter
+        : (startDistance - corner + perimeter) % perimeter;
+
+    if (cornerTravel > ROUTE_POINT_EPSILON && cornerTravel < travel - ROUTE_POINT_EPSILON) {
+      crossedCorners.push({
+        distance: cornerTravel,
+        point: rectPointAtPerimeterDistance(corner, rect),
+      });
+    }
+  }
+
+  points.push(
+    ...crossedCorners
+      .sort((left, right) => left.distance - right.distance)
+      .map((corner) => corner.point),
+  );
+  points.push(end);
+  return {
+    distance: travel,
+    points,
+  };
+}
+
+function buildDoorFinishPath(fromPoint: RoutePoint, door: DoorObject, booths: BoothObject[]) {
+  const booth = booths.find((item) => item.id === door.boothId);
+  const approach = getDoorApproachPoint(door, booths);
+
+  if (!booth) {
+    return [fromPoint, approach, door];
+  }
+
+  const rect = getExpandedBoothRect(booth, DOOR_APPROACH_OFFSET);
+  const directInterval = getSegmentRectInterval(fromPoint, approach, {
+    x: booth.x,
+    y: booth.y,
+    width: booth.width,
+    depth: booth.depth,
+  });
+
+  if (!directInterval) {
+    return [fromPoint, approach, door];
+  }
+
+  const perimeterStart = projectPointToRectPerimeter(fromPoint, rect);
+  const perimeterEnd = projectPointToRectPerimeter(approach, rect);
+  const clockwise = buildPerimeterPath(perimeterStart, perimeterEnd, rect, 1);
+  const counterClockwise = buildPerimeterPath(perimeterStart, perimeterEnd, rect, -1);
+  const perimeterPath =
+    clockwise.distance <= counterClockwise.distance ? clockwise.points : counterClockwise.points;
+
+  return [fromPoint, perimeterStart, ...perimeterPath.slice(1), approach, door];
+}
+
+function splitSegmentAroundObstacles(segment: WalkwaySegment, booths: BoothObject[]) {
+  const clearanceX = segment.walkway.width / 2 + OBSTACLE_PADDING_X;
+  const clearanceY = segment.walkway.width / 2 + OBSTACLE_PADDING_Y;
+  const blockedIntervals = getObstacleRects(booths, clearanceX, clearanceY)
+    .map((rect) => getSegmentRectInterval(segment.start, segment.end, rect))
+    .filter((interval): interval is { end: number; start: number } => Boolean(interval))
+    .sort((left, right) => left.start - right.start);
+
+  if (blockedIntervals.length === 0) {
+    return [segment];
+  }
+
+  const safeSegments: WalkwaySegment[] = [];
+  let cursor = 0;
+
+  for (const interval of blockedIntervals) {
+    if (interval.start > cursor + ROUTE_POINT_EPSILON) {
+      safeSegments.push({
+        ...segment,
+        end: pointAtSegmentRatio(segment.start, segment.end, interval.start),
+        safeIndex: safeSegments.length,
+        start: pointAtSegmentRatio(segment.start, segment.end, cursor),
+      });
+    }
+
+    cursor = Math.max(cursor, interval.end);
+  }
+
+  if (cursor < 1 - ROUTE_POINT_EPSILON) {
+    safeSegments.push({
+      ...segment,
+      end: segment.end,
+      safeIndex: safeSegments.length,
+      start: pointAtSegmentRatio(segment.start, segment.end, cursor),
+    });
+  }
+
+  return safeSegments;
+}
+
+function getWalkableWalkwaySegments(walkways: WalkwayObject[], booths: BoothObject[]) {
+  return getWalkwaySegments(walkways).flatMap((segment) =>
+    splitSegmentAroundObstacles(segment, booths),
   );
 }
 
@@ -346,12 +659,29 @@ function findPath(grid: boolean[][], start: GridNode, goal: GridNode) {
 function findNearestSegmentProjection(
   point: RoutePoint,
   segments: WalkwaySegment[],
+  booths: BoothObject[] = [],
+  allowedBlockingBoothId?: string,
 ): SegmentProjection | null {
   let best: SegmentProjection | null = null;
 
   for (const segment of segments) {
     const projected = projectPointToSegment(point, segment.start, segment.end);
     const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
+    const blockedByBooth = getObstacleRects(booths, OBSTACLE_PADDING_X, OBSTACLE_PADDING_Y).some(
+      (rect) => {
+        if (rect.id === allowedBlockingBoothId) {
+          return false;
+        }
+
+        const interval = getSegmentRectInterval(point, projected, rect);
+
+        return interval && interval.end - interval.start > ROUTE_POINT_EPSILON;
+      },
+    );
+
+    if (blockedByBooth) {
+      continue;
+    }
 
     if (!best || distance < best.distance) {
       best = {
@@ -372,22 +702,24 @@ function addUniquePoint(points: RoutePoint[], point: RoutePoint) {
 }
 
 function segmentGraphKey(segment: WalkwaySegment) {
-  return `${segment.walkway.id}:${segment.index}`;
+  return `${segment.walkway.id}:${segment.index}:${segment.safeIndex ?? 0}`;
 }
 
 function findWalkwayGraphPath(
+  booths: BoothObject[],
   walkways: WalkwayObject[],
-  fromDoor: DoorObject,
+  fromPoint: RoutePoint,
+  toPoint: RoutePoint,
   toDoor: DoorObject,
 ) {
-  const segments = getWalkwaySegments(walkways);
+  const segments = getWalkableWalkwaySegments(walkways, booths);
 
   if (segments.length === 0) {
     return null;
   }
 
-  const startProjection = findNearestSegmentProjection(fromDoor, segments);
-  const goalProjection = findNearestSegmentProjection(toDoor, segments);
+  const startProjection = findNearestSegmentProjection(fromPoint, segments, booths);
+  const goalProjection = findNearestSegmentProjection(toPoint, segments, booths, toDoor.boothId);
 
   if (!startProjection || !goalProjection) {
     return null;
@@ -573,13 +905,18 @@ export function planDoorRoute({
     return null;
   }
 
-  const graphPoints = findWalkwayGraphPath(walkways, fromDoor, toDoor);
+  const fromApproach = getDoorApproachPoint(fromDoor, booths);
+  const toApproach = getDoorApproachPoint(toDoor, booths);
+  const graphPoints = findWalkwayGraphPath(booths, walkways, fromApproach, toApproach, toDoor);
 
   if (graphPoints && graphPoints.length >= 2) {
+    const simplifiedGraphPoints = simplifyPath(graphPoints);
+    const finishPoints = buildDoorFinishPath(simplifiedGraphPoints.at(-1)!, toDoor, booths);
     const routePoints = compactRoutePoints([
       fromDoor,
-      ...simplifyPath(graphPoints),
-      toDoor,
+      fromApproach,
+      ...simplifiedGraphPoints.slice(0, -1),
+      ...finishPoints,
     ]);
 
     return {
@@ -589,8 +926,8 @@ export function planDoorRoute({
   }
 
   const grid = createWalkableGrid(booths, walkways);
-  const start = findNearestWalkableNode(grid, fromDoor);
-  const goal = findNearestWalkableNode(grid, toDoor);
+  const start = findNearestWalkableNode(grid, fromApproach);
+  const goal = findNearestWalkableNode(grid, toApproach);
 
   if (!start || !goal) {
     return null;
@@ -602,10 +939,17 @@ export function planDoorRoute({
     return null;
   }
 
-  const routePoints = [fromDoor, ...simplifyPath(points), toDoor];
+  const simplifiedGridPoints = simplifyPath(points);
+  const finishPoints = buildDoorFinishPath(simplifiedGridPoints.at(-1)!, toDoor, booths);
+  const routePoints = compactRoutePoints([
+    fromDoor,
+    fromApproach,
+    ...simplifiedGridPoints.slice(0, -1),
+    ...finishPoints,
+  ]);
 
   return {
     points: routePoints,
-    distance: measurePath(points),
+    distance: measurePath(routePoints),
   };
 }
