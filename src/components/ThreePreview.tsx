@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useLoader, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Edges, Grid, Html, Line, OrbitControls } from "@react-three/drei";
 import {
   BufferGeometry,
@@ -23,6 +23,7 @@ import type {
   DoorObject,
   FloorPlanSize,
   RoutePath,
+  RoutePoint,
   WalkwayObject,
 } from "../types";
 
@@ -48,6 +49,8 @@ interface PreviewMetrics {
 
 const MAX_PLANE_DIMENSION = 14;
 const ISO_POLAR_ANGLE = Math.acos(1 / Math.sqrt(3));
+const CAMERA_MIN_DISTANCE = 4;
+const CAMERA_MAX_DISTANCE = 10;
 const DOOR_MARKER_LENGTH = 0.36;
 const DOOR_MARKER_SURFACE_OFFSET = 0.003;
 const DOOR_MARKER_HEIGHT = 0.28;
@@ -302,7 +305,7 @@ function setIsometricCamera(
   controls: OrbitControlsImpl | null,
   preserveAzimuth: boolean,
 ) {
-  const distance = Math.max(camera.position.length(), 12);
+  const distance = MathUtils.clamp(camera.position.length(), 12, CAMERA_MAX_DISTANCE);
   const azimuth = preserveAzimuth
     ? Math.atan2(camera.position.x, camera.position.z)
     : Math.PI / 4;
@@ -319,14 +322,27 @@ function setIsometricCamera(
 }
 
 function CameraControls({
+  enabled,
   isoLocked,
   isoViewVersion,
 }: {
+  enabled: boolean;
   isoLocked: boolean;
   isoViewVersion: number;
 }) {
   const { camera } = useThree();
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
+
+  useEffect(() => {
+    const distance = camera.position.length();
+
+    if (distance <= CAMERA_MAX_DISTANCE) {
+      return;
+    }
+
+    camera.position.multiplyScalar(CAMERA_MAX_DISTANCE / distance);
+    controlsRef.current?.update();
+  }, [camera]);
 
   useEffect(() => {
     if (isoViewVersion === 0) {
@@ -346,14 +362,52 @@ function CameraControls({
 
   return (
     <OrbitControls
+      enabled={enabled}
       enablePan
       enableRotate
       enableZoom
       makeDefault
+      maxDistance={CAMERA_MAX_DISTANCE}
       maxPolarAngle={isoLocked ? ISO_POLAR_ANGLE : Math.PI / 2.15}
+      minDistance={CAMERA_MIN_DISTANCE}
       minPolarAngle={isoLocked ? ISO_POLAR_ANGLE : 0.1}
       ref={controlsRef}
     />
+  );
+}
+
+function worldPointToRoutePoint(
+  point: { x: number; z: number },
+  plane: { depth: number; width: number },
+): RoutePoint {
+  return {
+    x: MathUtils.clamp(point.x / plane.width + 0.5, 0, 1),
+    y: MathUtils.clamp(point.z / plane.depth + 0.5, 0, 1),
+  };
+}
+
+function pointerEventToRoutePoint(
+  event: ThreeEvent<PointerEvent>,
+  plane: { depth: number; width: number },
+) {
+  const directionY = event.ray.direction.y;
+
+  if (Math.abs(directionY) <= 0.00001) {
+    return null;
+  }
+
+  const distance = -event.ray.origin.y / directionY;
+
+  if (distance < 0) {
+    return null;
+  }
+
+  return worldPointToRoutePoint(
+    {
+      x: event.ray.origin.x + event.ray.direction.x * distance,
+      z: event.ray.origin.z + event.ray.direction.z * distance,
+    },
+    plane,
   );
 }
 
@@ -1067,6 +1121,106 @@ function RouteLine({
   );
 }
 
+function StartPoint3DControls({
+  onDragChange,
+  onRouteStartPointChange,
+  plane,
+  routeStartMode,
+  routeStartPoint,
+}: {
+  onDragChange: (dragging: boolean) => void;
+  onRouteStartPointChange: (point: RoutePoint | null) => void;
+  plane: { depth: number; width: number };
+  routeStartMode: "door" | "point";
+  routeStartPoint: RoutePoint | null;
+}) {
+  const [dragging, setDragging] = useState(false);
+
+  useEffect(() => {
+    if (!dragging) {
+      return;
+    }
+
+    const handlePointerUp = () => {
+      setDragging(false);
+      onDragChange(false);
+    };
+
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => window.removeEventListener("pointerup", handlePointerUp);
+  }, [dragging, onDragChange]);
+
+  if (routeStartMode !== "point" || !routeStartPoint) {
+    return null;
+  }
+
+  const updateFromEvent = (event: ThreeEvent<PointerEvent>) => {
+    event.stopPropagation();
+    const nextPoint = pointerEventToRoutePoint(event, plane);
+
+    if (nextPoint) {
+      onRouteStartPointChange(nextPoint);
+    }
+  };
+  const position = [
+    (routeStartPoint.x - 0.5) * plane.width,
+    0.48,
+    (routeStartPoint.y - 0.5) * plane.depth,
+  ] as const;
+
+  return (
+    <>
+      {dragging ? (
+        <mesh
+          onPointerMove={updateFromEvent}
+          onPointerUp={(event) => {
+            event.stopPropagation();
+            setDragging(false);
+            onDragChange(false);
+          }}
+          position={[0, 0.34, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <planeGeometry args={[plane.width, plane.depth]} />
+          <meshBasicMaterial depthWrite={false} opacity={0.001} transparent />
+        </mesh>
+      ) : null}
+      <group
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          setDragging(true);
+          onDragChange(true);
+        }}
+        onPointerMove={(event) => {
+          if (dragging) {
+            updateFromEvent(event);
+          }
+        }}
+        onPointerUp={(event) => {
+          event.stopPropagation();
+          setDragging(false);
+          onDragChange(false);
+        }}
+        position={position}
+        renderOrder={28}
+      >
+        <mesh position={[0, -0.24, 0]}>
+          <cylinderGeometry args={[0.035, 0.055, 0.48, 24]} />
+          <meshBasicMaterial color="#0ea5e9" depthTest />
+        </mesh>
+        <mesh>
+          <sphereGeometry args={[0.14, 24, 24]} />
+          <meshBasicMaterial color="#38bdf8" depthTest />
+        </mesh>
+        <mesh position={[0, 0, 0]}>
+          <sphereGeometry args={[0.2, 24, 24]} />
+          <meshBasicMaterial color="#ffffff" depthTest side={DoubleSide} transparent opacity={0.28} />
+        </mesh>
+      </group>
+    </>
+  );
+}
+
 function PreviewSceneCanvas({
   booths,
   doors,
@@ -1074,18 +1228,28 @@ function PreviewSceneCanvas({
   floorPlanOpacity,
   isoLocked,
   isoViewVersion,
+  onRouteStartPointChange,
   onMetrics,
+  onStartPointDragChange,
   performanceMode = false,
   plane,
   routePath,
+  routeStartMode,
+  routeStartPoint,
   selectedId,
+  startPointDragging,
   walkways,
 }: Omit<ThreePreviewProps, "routePanel"> & {
   isoLocked: boolean;
   isoViewVersion: number;
   onMetrics?: (metrics: PreviewMetrics) => void;
+  onRouteStartPointChange: (point: RoutePoint | null) => void;
+  onStartPointDragChange: (dragging: boolean) => void;
   performanceMode?: boolean;
   plane: { depth: number; width: number };
+  routeStartMode: "door" | "point";
+  routeStartPoint: RoutePoint | null;
+  startPointDragging: boolean;
 }) {
   return (
     <Canvas
@@ -1133,6 +1297,13 @@ function PreviewSceneCanvas({
         planeWidth={plane.width}
         routePath={routePath}
       />
+      <StartPoint3DControls
+        onDragChange={onStartPointDragChange}
+        onRouteStartPointChange={onRouteStartPointChange}
+        plane={plane}
+        routeStartMode={routeStartMode}
+        routeStartPoint={routeStartPoint}
+      />
       <DoorMarkers
         booths={booths}
         doors={doors}
@@ -1151,7 +1322,11 @@ function PreviewSceneCanvas({
         sectionSize={2}
       />
       {onMetrics ? <PerformanceProbe onMetrics={onMetrics} /> : null}
-      <CameraControls isoLocked={isoLocked} isoViewVersion={isoViewVersion} />
+      <CameraControls
+        enabled={!startPointDragging}
+        isoLocked={isoLocked}
+        isoViewVersion={isoViewVersion}
+      />
     </Canvas>
   );
 }
@@ -1208,6 +1383,7 @@ export function ThreePreview({
   const [isoLocked, setIsoLocked] = useState(false);
   const [largePreviewOpen, setLargePreviewOpen] = useState(false);
   const [metrics, setMetrics] = useState<PreviewMetrics | null>(null);
+  const [startPointDragging, setStartPointDragging] = useState(false);
   const showDebugMetrics = useMemo(
     () =>
       typeof window !== "undefined" &&
@@ -1230,9 +1406,14 @@ export function ThreePreview({
     floorPlanSize,
     isoLocked,
     isoViewVersion: 0,
+    onRouteStartPointChange: routePanel.onRouteStartPointChange,
+    onStartPointDragChange: setStartPointDragging,
     plane,
     routePath,
+    routeStartMode: routePanel.routeStartMode,
+    routeStartPoint: routePanel.routeStartPoint,
     selectedId,
+    startPointDragging,
     walkways,
   };
 

@@ -16,12 +16,21 @@ export default function App() {
   const uploadRef = useRef<HTMLInputElement | null>(null);
   const project = useFloorPlanProject();
   const routePanelProps = {
+    booths: project.booths,
     doors: project.doors,
     fromDoorId: project.fromDoorId,
+    onDestinationTypeChange: project.setRouteDestinationType,
     onFromDoorChange: project.setFromDoorId,
+    onRouteStartModeChange: project.setRouteStartMode,
+    onRouteStartPointChange: project.placeRouteStartPoint,
+    onToBoothChange: project.setToBoothId,
     onToDoorChange: project.setToDoorId,
+    routeDestinationType: project.routeDestinationType,
     routeDistance: project.routePath?.distance ?? null,
+    routeStartMode: project.routeStartMode,
+    routeStartPoint: project.routeStartPoint,
     routeStatus: project.routeStatus,
+    toBoothId: project.toBoothId,
     toDoorId: project.toDoorId,
   };
 
@@ -97,10 +106,12 @@ export default function App() {
             onDeleteSelected={project.deleteSelectedObject}
             onSelectObject={project.selectMapObject}
             onResetProject={project.resetProject}
+            onRouteStartPointChange={project.placeRouteStartPoint}
             onToolModeChange={project.setToolMode}
             onUpdateBooth={project.updateBooth}
             onUpdateWalkway={project.updateWalkway}
             routePath={project.routePath}
+            routeStartPoint={project.routeStartPoint}
             selectedObject={project.selectedObject}
             showLabels={project.showLabels}
             toolMode={project.toolMode}

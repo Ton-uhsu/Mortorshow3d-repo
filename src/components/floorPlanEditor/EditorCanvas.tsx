@@ -40,9 +40,11 @@ interface EditorCanvasProps {
   onSelectObject: (selection: SelectedMapObject) => void;
   resizeState: ResizeState | null;
   routePath: RoutePath | null;
+  routeStartPoint: RoutePoint | null;
   selectedObject: SelectedMapObject;
   setDragState: (state: DragState | null) => void;
   setPointDragState: (state: PointDragState | null) => void;
+  setRouteStartDragState: (state: boolean) => void;
   setResizeState: (state: ResizeState | null) => void;
   showLabels: boolean;
   toolMode: ToolMode;
@@ -66,9 +68,11 @@ export function EditorCanvas({
   onSelectObject,
   resizeState,
   routePath,
+  routeStartPoint,
   selectedObject,
   setDragState,
   setPointDragState,
+  setRouteStartDragState,
   setResizeState,
   showLabels,
   toolMode,
@@ -277,6 +281,30 @@ export function EditorCanvas({
             vectorEffect="non-scaling-stroke"
           />
         </svg>
+      ) : null}
+
+      {routeStartPoint ? (
+        <button
+          className="absolute z-[9] -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing"
+          onPointerDown={(event) => {
+            if (toolMode !== "select") {
+              return;
+            }
+
+            beginPointerInteraction(event);
+            setRouteStartDragState(true);
+          }}
+          style={{
+            left: `${routeStartPoint.x * 100}%`,
+            top: `${routeStartPoint.y * 100}%`,
+          }}
+          title="Route start point"
+          type="button"
+        >
+          <div className="grid h-8 w-8 place-items-center rounded-full border-[3px] border-white bg-sky-500 text-[0.6rem] font-black text-white shadow-[0_8px_18px_rgba(15,23,42,0.38),0_0_0_5px_rgba(14,165,233,0.25)]">
+            S
+          </div>
+        </button>
       ) : null}
 
       {booths.map((booth) => {

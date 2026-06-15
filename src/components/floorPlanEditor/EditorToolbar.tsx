@@ -43,6 +43,13 @@ export function EditorToolbar({
       >
         Place door
       </button>
+      <button
+        className={buildPillClass(toolMode === "place-start")}
+        onClick={() => onToolModeChange("place-start")}
+        type="button"
+      >
+        Place start
+      </button>
     </div>
   );
 }

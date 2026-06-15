@@ -34,9 +34,11 @@ interface FloorPlanEditorProps {
   onDeleteSelected: () => void;
   onSelectObject: (selection: SelectedMapObject) => void;
   onResetProject: () => void;
+  onRouteStartPointChange: (point: RoutePoint | null) => void;
   onToolModeChange: (tool: ToolMode) => void;
   onUpdateBooth: (id: string, patch: Partial<BoothObject>) => void;
   onUpdateWalkway: (id: string, patch: Partial<WalkwayObject>) => void;
+  routeStartPoint: RoutePoint | null;
 }
 
 export function FloorPlanEditor({
@@ -58,9 +60,11 @@ export function FloorPlanEditor({
   onDeleteSelected,
   onSelectObject,
   onResetProject,
+  onRouteStartPointChange,
   onToolModeChange,
   onUpdateBooth,
   onUpdateWalkway,
+  routeStartPoint,
 }: FloorPlanEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const {
@@ -71,6 +75,7 @@ export function FloorPlanEditor({
     resizeState,
     setDragState,
     setPointDragState,
+    setRouteStartDragState,
     setResizeState,
     walkwayDraft,
     walkwayPreviewPoint,
@@ -79,6 +84,7 @@ export function FloorPlanEditor({
     onAddBooth,
     onAddDoor,
     onAddWalkway,
+    onRouteStartPointChange,
     onSelectObject,
     onUpdateBooth,
     onUpdateWalkway,
@@ -124,7 +130,7 @@ export function FloorPlanEditor({
 
       <div className="my-3 flex flex-wrap justify-between gap-3 text-sm text-slate-300">
         <span>Booths block routes. Walkways are thick paths you can branch and bend.</span>
-        <span>Draw walkway: click points, Enter to finish, Esc to cancel.</span>
+        <span>Draw walkway: click points, Enter to finish, Esc to cancel. Place start: click once.</span>
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -191,9 +197,11 @@ export function FloorPlanEditor({
         onSelectObject={onSelectObject}
         resizeState={resizeState}
         routePath={routePath}
+        routeStartPoint={routeStartPoint}
         selectedObject={selectedObject}
         setDragState={setDragState}
         setPointDragState={setPointDragState}
+        setRouteStartDragState={setRouteStartDragState}
         setResizeState={setResizeState}
         showLabels={showLabels}
         toolMode={toolMode}

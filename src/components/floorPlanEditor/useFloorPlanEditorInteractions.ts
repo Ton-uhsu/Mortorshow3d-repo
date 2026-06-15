@@ -26,6 +26,7 @@ interface UseFloorPlanEditorInteractionsOptions {
   onAddBooth: (rect: RectDraft) => void;
   onAddDoor: (door: Omit<DoorObject, "id" | "name">) => void;
   onAddWalkway: (points: RoutePoint[]) => void;
+  onRouteStartPointChange: (point: RoutePoint | null) => void;
   onSelectObject: (selection: SelectedMapObject) => void;
   onUpdateBooth: (id: string, patch: Partial<BoothObject>) => void;
   onUpdateWalkway: (id: string, patch: Partial<WalkwayObject>) => void;
@@ -37,6 +38,7 @@ export function useFloorPlanEditorInteractions({
   onAddBooth,
   onAddDoor,
   onAddWalkway,
+  onRouteStartPointChange,
   onSelectObject,
   onUpdateBooth,
   onUpdateWalkway,
@@ -46,6 +48,7 @@ export function useFloorPlanEditorInteractions({
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [resizeState, setResizeState] = useState<ResizeState | null>(null);
   const [pointDragState, setPointDragState] = useState<PointDragState | null>(null);
+  const [routeStartDragState, setRouteStartDragState] = useState(false);
   const [walkwayDraft, setWalkwayDraft] = useState<RoutePoint[] | null>(null);
   const [walkwayPreviewPoint, setWalkwayPreviewPoint] = useState<RoutePoint | null>(null);
 
@@ -110,6 +113,11 @@ export function useFloorPlanEditorInteractions({
       return;
     }
 
+    if (toolMode === "place-start") {
+      onRouteStartPointChange(point);
+      return;
+    }
+
     if (toolMode === "draw-walkway") {
       setWalkwayDraft((current) => {
         const lastPoint = current?.at(-1);
@@ -170,6 +178,11 @@ export function useFloorPlanEditorInteractions({
       );
 
       onUpdateWalkway(pointDragState.walkwayId, { points: nextPoints });
+      return;
+    }
+
+    if (routeStartDragState) {
+      onRouteStartPointChange(point);
       return;
     }
 
@@ -248,6 +261,7 @@ export function useFloorPlanEditorInteractions({
 
     setDragState(null);
     setPointDragState(null);
+    setRouteStartDragState(false);
     setResizeState(null);
   };
 
@@ -260,6 +274,7 @@ export function useFloorPlanEditorInteractions({
     resizeState,
     setDragState,
     setPointDragState,
+    setRouteStartDragState,
     setResizeState,
     walkwayDraft,
     walkwayPreviewPoint,

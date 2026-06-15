@@ -18,6 +18,7 @@ interface PlannerInput {
   booths: BoothObject[];
   doors: DoorObject[];
   fromDoorId: string | null;
+  fromPoint?: RoutePoint | null;
   toDoorId: string | null;
   walkways: WalkwayObject[];
 }
@@ -891,30 +892,31 @@ export function planDoorRoute({
   booths,
   doors,
   fromDoorId,
+  fromPoint,
   toDoorId,
   walkways,
 }: PlannerInput): RoutePath | null {
-  if (!fromDoorId || !toDoorId || fromDoorId === toDoorId || walkways.length === 0) {
+  if ((!fromDoorId && !fromPoint) || !toDoorId || fromDoorId === toDoorId || walkways.length === 0) {
     return null;
   }
 
-  const fromDoor = doors.find((door) => door.id === fromDoorId);
+  const fromDoor = fromDoorId ? doors.find((door) => door.id === fromDoorId) : null;
   const toDoor = doors.find((door) => door.id === toDoorId);
 
-  if (!fromDoor || !toDoor) {
+  if ((!fromDoor && !fromPoint) || !toDoor) {
     return null;
   }
 
-  const fromApproach = getDoorApproachPoint(fromDoor, booths);
+  const fromApproach = fromDoor ? getDoorApproachPoint(fromDoor, booths) : fromPoint!;
   const toApproach = getDoorApproachPoint(toDoor, booths);
   const graphPoints = findWalkwayGraphPath(booths, walkways, fromApproach, toApproach, toDoor);
+  const startPoints = fromDoor ? [fromDoor, fromApproach] : [fromApproach];
 
   if (graphPoints && graphPoints.length >= 2) {
     const simplifiedGraphPoints = simplifyPath(graphPoints);
     const finishPoints = buildDoorFinishPath(simplifiedGraphPoints.at(-1)!, toDoor, booths);
     const routePoints = compactRoutePoints([
-      fromDoor,
-      fromApproach,
+      ...startPoints,
       ...simplifiedGraphPoints.slice(0, -1),
       ...finishPoints,
     ]);
@@ -942,8 +944,7 @@ export function planDoorRoute({
   const simplifiedGridPoints = simplifyPath(points);
   const finishPoints = buildDoorFinishPath(simplifiedGridPoints.at(-1)!, toDoor, booths);
   const routePoints = compactRoutePoints([
-    fromDoor,
-    fromApproach,
+    ...startPoints,
     ...simplifiedGridPoints.slice(0, -1),
     ...finishPoints,
   ]);

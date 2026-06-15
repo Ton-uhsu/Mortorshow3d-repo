@@ -56,6 +56,10 @@ export function useFloorPlanProject() {
   const [copiedBooth, setCopiedBooth] = useState<BoothObject | null>(null);
   const [fromDoorId, setFromDoorId] = useState<string | null>(null);
   const [toDoorId, setToDoorId] = useState<string | null>(null);
+  const [routeStartMode, setRouteStartMode] = useState<"door" | "point">("door");
+  const [routeDestinationType, setRouteDestinationType] = useState<"door" | "booth">("door");
+  const [routeStartPoint, setRouteStartPoint] = useState<RoutePoint | null>(null);
+  const [toBoothId, setToBoothId] = useState<string | null>(null);
   const previousBoothsRef = useRef<BoothObject[]>(booths);
 
   const selectedBooth = useMemo(
@@ -67,20 +71,73 @@ export function useFloorPlanProject() {
       catalogEntries.find((entry) => entry.code === selectedBooth?.boothCode) ?? null,
     [catalogEntries, selectedBooth?.boothCode],
   );
-  const routePath = useMemo(
-    () =>
-      planDoorRoute({
+  const routePath = useMemo(() => {
+    const fromPoint = routeStartMode === "point" ? routeStartPoint : null;
+    const startDoorId = routeStartMode === "door" ? fromDoorId : null;
+
+    if (routeDestinationType === "booth") {
+      const boothDoors = doors.filter((door) => door.boothId === toBoothId);
+      const routes = boothDoors
+        .map((door) =>
+          planDoorRoute({
+            booths,
+            doors,
+            fromDoorId: startDoorId,
+            fromPoint,
+            toDoorId: door.id,
+            walkways,
+          }),
+        )
+        .filter((route): route is NonNullable<typeof route> => Boolean(route));
+
+      return routes.reduce<NonNullable<typeof routes[number]> | null>(
+        (best, route) => (!best || route.distance < best.distance ? route : best),
+        null,
+      );
+    }
+
+    return planDoorRoute({
         booths,
         doors,
-        fromDoorId,
+        fromDoorId: startDoorId,
+        fromPoint,
         toDoorId,
         walkways,
-      }),
-    [booths, doors, fromDoorId, toDoorId, walkways],
-  );
+      });
+  }, [
+    booths,
+    doors,
+    fromDoorId,
+    routeDestinationType,
+    routeStartMode,
+    routeStartPoint,
+    toBoothId,
+    toDoorId,
+    walkways,
+  ]);
   const routeStatus = useMemo(() => {
-    if (!fromDoorId || !toDoorId) {
-      return "Pick two doors";
+    if (routeStartMode === "door" && !fromDoorId) {
+      return "Pick start door";
+    }
+
+    if (routeStartMode === "point" && !routeStartPoint) {
+      return "Place start point";
+    }
+
+    if (routeDestinationType === "door" && !toDoorId) {
+      return "Pick destination door";
+    }
+
+    if (routeDestinationType === "booth" && !toBoothId) {
+      return "Pick destination booth";
+    }
+
+    if (
+      routeDestinationType === "booth" &&
+      toBoothId &&
+      !doors.some((door) => door.boothId === toBoothId)
+    ) {
+      return "Booth has no door";
     }
 
     if (walkways.length === 0) {
@@ -88,7 +145,17 @@ export function useFloorPlanProject() {
     }
 
     return routePath ? `${routePath.points.length} route points` : "No valid walkway route";
-  }, [fromDoorId, routePath, toDoorId, walkways.length]);
+  }, [
+    fromDoorId,
+    routeDestinationType,
+    routePath,
+    routeStartMode,
+    routeStartPoint,
+    toBoothId,
+    toDoorId,
+    doors,
+    walkways.length,
+  ]);
   const categorySummary = useMemo(
     () =>
       booths.reduce<Record<string, number>>((summary, booth) => {
@@ -103,11 +170,21 @@ export function useFloorPlanProject() {
     setSelectedId(selection?.type === "booth" ? selection.id : null);
   };
 
+  const placeRouteStartPoint = (point: RoutePoint | null) => {
+    setRouteStartPoint(point);
+
+    if (point) {
+      setRouteStartMode("point");
+    }
+  };
+
   const clearNavigationObjects = () => {
     setWalkways([]);
     setDoors([]);
     setFromDoorId(null);
     setToDoorId(null);
+    setRouteStartPoint(null);
+    setToBoothId(null);
     setSelectedObject((current) => (current?.type === "booth" ? current : null));
   };
 
@@ -159,6 +236,12 @@ export function useFloorPlanProject() {
       setToDoorId(null);
     }
   }, [doors, fromDoorId, toDoorId]);
+
+  useEffect(() => {
+    if (toBoothId && !booths.some((booth) => booth.id === toBoothId)) {
+      setToBoothId(null);
+    }
+  }, [booths, toBoothId]);
 
   useEffect(() => {
     if (!selectedObject) {
@@ -404,7 +487,9 @@ export function useFloorPlanProject() {
       route: {
         distance: routePath?.distance ?? null,
         fromDoorId,
+        fromPoint: routeStartPoint,
         points: routePath?.points ?? [],
+        toBoothId,
         toDoorId,
       },
       walkways,
@@ -469,6 +554,10 @@ export function useFloorPlanProject() {
     loadRouteDemo,
     resetProject,
     routePath,
+    routeDestinationType,
+    routeStartMode,
+    placeRouteStartPoint,
+    routeStartPoint,
     routeStatus,
     selectedBooth,
     selectedCatalogEntry,
@@ -478,11 +567,15 @@ export function useFloorPlanProject() {
     setFromDoorId,
     setFloorPlanOpacity,
     setGridVisible,
+    setRouteDestinationType,
+    setRouteStartMode,
     setShowLabels,
+    setToBoothId,
     setToDoorId,
     setToolMode,
     showLabels,
     toDoorId,
+    toBoothId,
     toolMode,
     updateBooth,
     updateWalkway,

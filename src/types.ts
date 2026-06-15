@@ -1,4 +1,9 @@
-export type ToolMode = "select" | "draw-booth" | "draw-walkway" | "place-door";
+export type ToolMode =
+  | "select"
+  | "draw-booth"
+  | "draw-walkway"
+  | "place-door"
+  | "place-start";
 
 export type BoothCategory =
   | "standard"
